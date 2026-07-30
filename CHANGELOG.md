@@ -2,6 +2,23 @@
 
 All notable changes to Project Odin are documented in this file.
 
+## [1.3.0] - 2026-07-31
+
+### Added
+
+- Manually confirmed market and limit spot sales in the unified **Manuell order** card.
+- Sell selection limited to allowlisted active EUR pairs with positive available balance.
+- 25, 50, 75 and 100 percent shortcuts based exclusively on available balance.
+- Sell-specific gross/net proceeds, balance-before/after and confirmation details.
+- Nullable acquisition-price and unrealized-result position fields.
+
+### Security
+
+- Reserved funds are excluded and balances are revalidated at confirmation.
+- Existing live-mode, buy-only, kill-switch, expiry, precision, risk and duplicate
+  protections apply to sales.
+- No automatic trading or automated real-order submission was added.
+
 ## [1.2.1] - 2026-07-31
 
 ### Added

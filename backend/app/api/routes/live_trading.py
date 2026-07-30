@@ -11,7 +11,7 @@ from app.db.session import get_db_session
 from app.exchanges.base import Credentials, CredentialStatus
 from app.exchanges.errors import ExchangeError
 from app.exchanges.kraken import PAIR_CACHE_SECONDS, KrakenProvider
-from app.models.live_trading import LiveOrder, PairRiskLimit
+from app.models.live_trading import AssetCostBasis, LiveOrder, PairRiskLimit
 from app.models.system_state import TradingMode
 from app.schemas.live_trading import (
     AccountFillResponse,
@@ -248,6 +248,7 @@ async def get_pairs(
 
 @router.get("/account", response_model=LiveAccountResponse)
 async def get_live_account(
+    session: AsyncSession = Depends(get_db_session),
     credentials: Credentials = Depends(stored_credentials),
 ) -> LiveAccountResponse:
     now = datetime.now(UTC)
@@ -275,6 +276,8 @@ async def get_live_account(
     total = sum((value for _, value, _ in valued if value is not None), Decimal("0"))
     opened, recent = await provider.fetch_account_orders(credentials)
     fills = await provider.fetch_account_fills(credentials)
+    cost_result = await session.execute(select(AssetCostBasis))
+    cost_bases = {item.canonical_asset_id: item for item in cost_result.scalars()}
     return LiveAccountResponse(
         connection_status="connected",
         last_successful_refresh=now,
@@ -297,6 +300,25 @@ async def get_live_account(
                 ),
                 pricing_status=status_value,
                 price_timestamp=(now if value is not None else None),
+                average_acquisition_price_eur=(
+                    cost_bases[item.canonical_asset_id].average_acquisition_price_eur
+                    if item.canonical_asset_id in cost_bases
+                    else None
+                ),
+                estimated_unrealized_pnl_eur=(
+                    float(
+                        value
+                        - item.total
+                        * Decimal(
+                            str(cost_bases[item.canonical_asset_id].average_acquisition_price_eur)
+                        )
+                    )
+                    if value is not None
+                    and item.canonical_asset_id in cost_bases
+                    and cost_bases[item.canonical_asset_id].average_acquisition_price_eur
+                    is not None
+                    else None
+                ),
             )
             for item, value, status_value in valued
         ],
@@ -411,9 +433,17 @@ async def preview(
     session: AsyncSession = Depends(get_db_session),
     credentials: Credentials = Depends(stored_credentials),
 ) -> OrderPreviewResponse:
-    if (payload.amount_eur is None) == (payload.amount_crypto is None):
+    if payload.side == "buy" and (payload.amount_eur is None) == (payload.amount_crypto is None):
         raise HTTPException(
             status_code=422, detail="Ange antingen belopp i EUR eller antal krypto."
+        )
+    if payload.side == "sell" and (
+        payload.amount_eur is not None
+        or (payload.amount_crypto is None) == (payload.sell_percentage is None)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Ange antal krypto eller procent av tillgängligt saldo.",
         )
     try:
         order = await create_preview(
@@ -425,6 +455,7 @@ async def preview(
             order_type=payload.order_type,
             amount_eur=(Decimal(str(payload.amount_eur)) if payload.amount_eur else None),
             amount_crypto=(Decimal(str(payload.amount_crypto)) if payload.amount_crypto else None),
+            sell_percentage=payload.sell_percentage,
             limit_price=(Decimal(str(payload.limit_price)) if payload.limit_price else None),
             recommendation_price=(
                 Decimal(str(payload.recommendation_price)) if payload.recommendation_price else None
@@ -445,11 +476,19 @@ async def preview(
         warnings.append("Marknadsorderns slutpris kan avvika. Beräknad kostnad är inte garanterad.")
     else:
         warnings.append("Limitordern kan förbli öppen och helt eller delvis ofylld.")
-    balances = await provider.fetch_balances(credentials)
-    available_eur = float(balances.get("EUR", Decimal("0")))
-    market_price = float(
-        json.loads(order.submitted_values or "{}").get("market_price", order.preview_price)
+    normalized_balances = await provider.fetch_normalized_balances(credentials)
+    available_eur = float(
+        next(
+            (item.available for item in normalized_balances if item.display_symbol == "EUR"),
+            Decimal("0"),
+        )
     )
+    snapshot = json.loads(order.submitted_values or "{}")
+    market_price = float(snapshot.get("market_price", order.preview_price))
+    available_crypto = (
+        float(snapshot.get("available_crypto", 0)) if payload.side == "sell" else None
+    )
+    fee = order.estimated_fee or 0
     slippage = payload.max_slippage_percent / 100
     pair_risk = await session.get(PairRiskLimit, payload.symbol)
     if payload.recommendation_price:
@@ -475,6 +514,17 @@ async def preview(
         pair_status=rules.status,
         price_timestamp=datetime.now(UTC),
         available_eur=available_eur,
+        available_crypto=available_crypto,
+        available_crypto_after=(
+            available_crypto - order.estimated_quantity if available_crypto is not None else None
+        ),
+        sell_percentage=(
+            float(payload.sell_percentage)
+            if payload.sell_percentage is not None
+            else (order.estimated_quantity / available_crypto * 100 if available_crypto else None)
+        ),
+        estimated_gross_proceeds=(order.estimated_total if payload.side == "sell" else None),
+        estimated_net_proceeds=(order.estimated_total - fee if payload.side == "sell" else None),
         max_slippage_percent=payload.max_slippage_percent,
         estimated_price_low=market_price * (1 - slippage),
         estimated_price_high=market_price * (1 + slippage),
@@ -500,6 +550,17 @@ async def confirm(
     session: AsyncSession = Depends(get_db_session),
     credentials: Credentials = Depends(stored_credentials),
 ) -> LiveOrderResponse:
+    preview_result = await session.execute(
+        select(LiveOrder).where(LiveOrder.preview_id == payload.preview_id)
+    )
+    preview_order = preview_result.scalar_one_or_none()
+    expected_confirmation = (
+        "Bekräfta riktig försäljning"
+        if preview_order and preview_order.side == "sell"
+        else "Bekräfta riktigt köp"
+    )
+    if payload.confirmation_text != expected_confirmation:
+        raise HTTPException(status_code=409, detail="Bekräftelsetexten matchar inte ordern.")
     try:
         order = await confirm_order(session, provider, credentials, payload.preview_id)
     except LiveTradingViolation as exc:
@@ -519,7 +580,9 @@ async def confirm(
         message=messages.get(order.status, "Orderstatusen har uppdaterats."),
         submitted_at=order.user_confirmed_at,
         symbol=order.symbol,
+        side=order.side,
         order_type=order.order_type,
+        quantity=order.estimated_quantity,
         amount_eur=order.estimated_total,
         submitted_price=(order.preview_price if order.order_type == "limit" else None),
     )

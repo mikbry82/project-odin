@@ -1,17 +1,19 @@
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const executable = path.join(
   root,
   "frontend",
-  "release-v1.2.1",
+  "release-v1.3.0",
   "win-unpacked",
   "resources",
   "backend",
   "project-odin-backend.exe",
 );
 const validationDirectory = path.join(root, ".tmp-packaged-validation");
+mkdirSync(validationDirectory, { recursive: true });
 const databasePath = path.join(validationDirectory, "project-odin.db").replaceAll("\\", "/");
 const backend = spawn(executable, [], {
   env: {
@@ -19,7 +21,7 @@ const backend = spawn(executable, [], {
     APPDATA: validationDirectory,
     DATABASE_URL: `sqlite+aiosqlite:///${databasePath}`,
   },
-  stdio: ["pipe", "ignore", "ignore"],
+  stdio: ["pipe", "ignore", "inherit"],
   windowsHide: true,
 });
 

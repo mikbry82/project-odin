@@ -3,6 +3,22 @@
 Project Odin 1.1.0 contains a safety-gated foundation for manually confirmed Kraken
 spot orders. It does not permit unattended or AI-triggered live trading.
 
+## Manuella försäljningar i 1.3.0
+
+Manuella spotförsäljningar använder samma avstängda standardläge, aktiveringskrav,
+nödstopp, server-preview, korta giltighetstid och engångsbekräftelse som köp.
+`buy_only` är fortsatt en backendspärr; säljorder kan inte skapas förrän användaren
+uttryckligen har stängt av den begränsningen.
+
+Säljbar mängd beräknas alltid från Krakens **tillgängliga** saldo. Reserverade medel
+räknas aldrig in i procentknapparna och kan inte säljas. Backend kontrollerar saldot
+igen vid bekräftelse. Om saldo, pris, riskinställningar, live-läge eller nödstopp har
+ändrats krävs en ny preview.
+
+En accepterad säljorder är inte nödvändigtvis fylld. Kontrollera öppna ordrar,
+avslut och saldo efter skickad order. Limitordrar kan förbli öppna eller endast
+delvis fyllas.
+
 ## Supported scope
 
 - Kraken Spot API only

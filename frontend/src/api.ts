@@ -131,10 +131,11 @@ export const api = {
     }),
   previewLiveOrder: (payload: {
     symbol: string;
-    side: "buy";
+    side: "buy" | "sell";
     order_type: "market" | "limit";
     amount_eur?: number;
     amount_crypto?: number;
+    sell_percentage?: 25 | 50 | 75 | 100;
     limit_price?: number;
     recommendation_price?: number;
     max_slippage_percent: number;
@@ -143,7 +144,7 @@ export const api = {
       method: "POST",
       ...jsonBody(payload),
     }),
-  confirmLiveOrder: (previewId: string) =>
+  confirmLiveOrder: (previewId: string, side: "buy" | "sell") =>
     request<{
       internal_order_id: string;
       status: string;
@@ -151,14 +152,19 @@ export const api = {
       message: string;
       submitted_at: string | null;
       symbol: string;
+      side: string;
       order_type: string;
+      quantity: number;
       amount_eur: number;
       submitted_price: number | null;
     }>("/api/v1/live/orders/confirm", {
       method: "POST",
       ...jsonBody({
         preview_id: previewId,
-        confirmation_text: "Bekräfta riktigt köp",
+        confirmation_text:
+          side === "sell"
+            ? "Bekräfta riktig försäljning"
+            : "Bekräfta riktigt köp",
       }),
     }),
   cancelAllLiveOrders: () =>

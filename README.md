@@ -1,4 +1,4 @@
-# Project Odin v1.2.1
+# Project Odin v1.3.0
 
 Project Odin is an explainable market-analysis and paper-trading application. The
 Windows desktop application packages the React frontend and FastAPI backend and runs
@@ -11,13 +11,13 @@ always available with understandable Swedish labels and explanations.
 
 ## Install and start on Windows
 
-Download `Project-Odin-Setup-1.2.1-x64.exe`, run it, choose an installation
+Download `Project-Odin-Setup-1.3.0-x64.exe`, run it, choose an installation
 directory, and launch Project Odin from the Start menu or desktop shortcut. Windows
 SmartScreen may warn because the application is not publisher-signed; only run an
 artifact obtained from a trusted source.
 
 For use without installation, download
-`Project-Odin-Portable-1.2.1-x64.exe` and run it directly.
+`Project-Odin-Portable-1.3.0-x64.exe` and run it directly.
 
 On first start, Project Odin starts its localhost backend, creates the local SQLite
 database, waits for both backend and database readiness, and then displays the
@@ -63,16 +63,24 @@ npm run build:desktop
 npm run package:desktop
 ```
 
-Artifacts are written to `frontend/release-v1.2.1/`.
+Artifacts are written to `frontend/release-v1.3.0/`.
 
 ## Manually confirmed Kraken spot trading
 
-Version 1.2.1 includes the disabled-by-default foundation for manually confirmed Kraken
-spot purchases. Livekonto provides a searchable multi-select containing active,
-backend-approved EUR spot pairs and a manual market/limit purchase form. It does not
-enable automatic live trading. Simulation remains the default, and every live order
-requires a fresh server-side preview and the explicit button
-**Bekräfta riktigt köp**.
+Version 1.3.0 supports manually confirmed Kraken spot purchases and sales.
+Livekonto only offers sell pairs that are enabled, currently tradable, and have a
+positive available—not reserved—balance. A sale may use an exact cryptocurrency
+quantity or 25, 50, 75, or 100 percent of the available balance.
+
+The confirmation view shows estimated gross and net proceeds, fees, balance before
+and after, price age, expiry, and applicable risk limits. It does not enable
+automatic live trading. Simulation remains the default, and every live order
+requires a fresh server-side preview and the matching explicit confirmation button.
+
+The asset table shows total, available and reserved balances, estimated EUR value,
+pricing timestamp, and acquisition-price/unrealized-result fields. When no verified
+cost basis exists, Odin displays **Inköpspris saknas** and does not invent profit or
+loss.
 
 Use a dedicated Kraken key with only **Query Funds** and
 **Create & modify orders**. Never enable **Withdraw Funds**. Secrets are stored in

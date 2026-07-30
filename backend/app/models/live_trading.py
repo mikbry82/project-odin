@@ -33,6 +33,17 @@ class PairRiskLimit(Base):
     max_orders_daily: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class AssetCostBasis(Base):
+    __tablename__ = "asset_cost_basis"
+
+    canonical_asset_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    average_acquisition_price_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="manual")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class LiveOrder(Base):
     __tablename__ = "live_orders"
 

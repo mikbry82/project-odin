@@ -120,6 +120,8 @@ beforeEach(() => {
         allocation_percent: 50,
         pricing_status: "direct",
         price_timestamp: "2026-07-30T20:00:00Z",
+        average_acquisition_price_eur: null,
+        estimated_unrealized_pnl_eur: null,
       },
       {
         canonical_asset_id: "UNKNOWN.S",
@@ -131,6 +133,8 @@ beforeEach(() => {
         allocation_percent: null,
         pricing_status: "unpriced",
         price_timestamp: null,
+        average_acquisition_price_eur: null,
+        estimated_unrealized_pnl_eur: null,
       },
     ],
     open_orders: [],
@@ -158,6 +162,11 @@ beforeEach(() => {
     pair_status: "online",
     price_timestamp: "2026-07-30T20:00:00Z",
     available_eur: 50,
+    available_crypto: null,
+    available_crypto_after: null,
+    sell_percentage: null,
+    estimated_gross_proceeds: null,
+    estimated_net_proceeds: null,
     max_slippage_percent: 1,
     estimated_price_low: 49500,
     estimated_price_high: 50500,
@@ -250,7 +259,7 @@ describe("complete interface", () => {
   it("previews a manual buy and changed input invalidates it", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Livekonto" }));
-    const amount = await screen.findByLabelText("Köpbelopp");
+    const amount = await screen.findByLabelText("Orderbelopp");
     fireEvent.change(amount, { target: { value: "10" } });
     fireEvent.click(
       screen.getByRole("button", { name: "Förhandsgranska köp" }),
@@ -274,7 +283,7 @@ describe("complete interface", () => {
     fireEvent.change(screen.getByLabelText("Inmatningssätt"), {
       target: { value: "crypto" },
     });
-    fireEvent.change(screen.getByLabelText("Köpbelopp"), {
+    fireEvent.change(screen.getByLabelText("Orderbelopp"), {
       target: { value: "0.001" },
     });
     fireEvent.change(screen.getByLabelText("Limitpris"), {
@@ -289,6 +298,35 @@ describe("complete interface", () => {
         order_type: "limit",
         amount_crypto: 0.001,
         limit_price: 49000,
+      }),
+    );
+  });
+
+  it("offers held available assets only and previews a 100 percent sell", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Livekonto" }));
+    fireEvent.change(await screen.findByLabelText("Ordersida"), {
+      target: { value: "sell" },
+    });
+
+    const assetSelect = screen.getByLabelText("Kryptovaluta");
+    expect(assetSelect).toHaveValue("BTC/EUR");
+    expect(
+      screen.queryByRole("option", { name: "ETH/EUR" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Inmatningssätt"), {
+      target: { value: "percentage" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "100 %" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Förhandsgranska försäljning" }),
+    );
+
+    expect(apiMock.previewLiveOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: "BTC/EUR",
+        side: "sell",
+        sell_percentage: 100,
       }),
     );
   });

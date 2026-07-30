@@ -13,6 +13,7 @@ from app.exchanges.base import (
     Credentials,
     CredentialStatus,
     CredentialValidation,
+    ExchangeBalance,
     ExchangeOrder,
     ExchangeProvider,
     SymbolRules,
@@ -44,12 +45,19 @@ class FakeProvider(ExchangeProvider):
             CredentialStatus.CONNECTED, True, None, None, "incomplete"
         )
         self.price_error: Exception | None = None
+        self.normalized_balance: list[ExchangeBalance] | None = None
+        self.last_order = None
 
     async def validate_credentials(self, credentials):
         return self.validation
 
     async def fetch_balances(self, credentials):
         return self.balance
+
+    async def fetch_normalized_balances(self, credentials):
+        if self.normalized_balance is not None:
+            return self.normalized_balance
+        return await super().fetch_normalized_balances(credentials)
 
     async def fetch_trading_pairs(self):
         return ["BTC/EUR", "ETH/EUR"]
@@ -63,10 +71,12 @@ class FakeProvider(ExchangeProvider):
         return Decimal("50000")
 
     async def preview_order(self, credentials, order):
+        self.last_order = order
         return Decimal("1")
 
     async def place_spot_order(self, credentials, order):
         self.place_calls += 1
+        self.last_order = order
         if self.place_error:
             raise self.place_error
         return self.place_result
@@ -189,6 +199,108 @@ async def test_crypto_quantity_and_limit_buy_preview(session: AsyncSession) -> N
     assert order.estimated_quantity == pytest.approx(0.0002)
     assert order.preview_price == pytest.approx(49000)
     assert order.estimated_total == pytest.approx(9.8)
+
+
+@pytest.mark.asyncio
+async def test_market_sell_uses_available_not_reserved_balance(session: AsyncSession) -> None:
+    settings = await session.get(LiveRiskSettings, 1)
+    settings.buy_only = False
+    settings.max_order_eur = 100
+    settings.max_daily_eur = 200
+    await session.commit()
+    provider = FakeProvider()
+    provider.normalized_balance = [
+        ExchangeBalance("XXBT", "BTC", Decimal("1"), Decimal("0.0002"), Decimal("0.9998"))
+    ]
+    order = await make_preview(
+        session,
+        provider,
+        side="sell",
+        amount_eur=None,
+        amount_crypto=Decimal("0.0002"),
+    )
+    assert order.side == "sell"
+    assert provider.last_order.quantity == Decimal("0.0002")
+    with pytest.raises(LiveTradingViolation, match="tillgängligt kryptosaldo"):
+        await make_preview(
+            session,
+            provider,
+            side="sell",
+            amount_eur=None,
+            amount_crypto=Decimal("0.0003"),
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("percentage", "expected"),
+    [(25, 0.00025), (50, 0.0005), (75, 0.00075), (100, 0.001)],
+)
+async def test_sell_percentage_shortcuts_use_available_balance(
+    session: AsyncSession, percentage: int, expected: float
+) -> None:
+    settings = await session.get(LiveRiskSettings, 1)
+    settings.buy_only = False
+    settings.max_order_eur = 100
+    settings.max_daily_eur = 200
+    await session.commit()
+    provider = FakeProvider()
+    provider.normalized_balance = [
+        ExchangeBalance("XXBT", "BTC", Decimal("2"), Decimal("0.001"), Decimal("1.999"))
+    ]
+    order = await make_preview(
+        session,
+        provider,
+        side="sell",
+        amount_eur=None,
+        amount_crypto=None,
+        sell_percentage=percentage,
+    )
+    assert order.estimated_quantity == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_limit_sell_preview_preserves_price_and_quantity(session: AsyncSession) -> None:
+    settings = await session.get(LiveRiskSettings, 1)
+    settings.buy_only = False
+    await session.commit()
+    provider = FakeProvider()
+    order = await make_preview(
+        session,
+        provider,
+        side="sell",
+        order_type="limit",
+        amount_eur=None,
+        amount_crypto=Decimal("0.0002"),
+        limit_price=Decimal("49000"),
+    )
+    assert order.preview_price == pytest.approx(49000)
+    assert provider.last_order.side == "sell"
+    assert provider.last_order.price == Decimal("49000")
+
+
+@pytest.mark.asyncio
+async def test_sell_confirmation_rechecks_available_balance(session: AsyncSession) -> None:
+    settings = await session.get(LiveRiskSettings, 1)
+    settings.buy_only = False
+    await session.commit()
+    provider = FakeProvider()
+    provider.normalized_balance = [
+        ExchangeBalance("XXBT", "BTC", Decimal("1"), Decimal("0.0002"), Decimal("0.9998"))
+    ]
+    order = await make_preview(
+        session,
+        provider,
+        side="sell",
+        amount_eur=None,
+        amount_crypto=Decimal("0.0002"),
+    )
+    provider.normalized_balance = [
+        ExchangeBalance("XXBT", "BTC", Decimal("1"), Decimal("0.0001"), Decimal("0.9999"))
+    ]
+    with pytest.raises(LiveTradingViolation, match="tillgängligt kryptosaldo"):
+        await confirm_order(session, provider, credentials(), order.preview_id)
+    assert provider.place_calls == 0
 
 
 @pytest.mark.asyncio

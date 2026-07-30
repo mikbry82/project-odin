@@ -80,8 +80,12 @@ export default function App() {
   const [pairMenuOpen, setPairMenuOpen] = useState(false);
   const [selectedPairs, setSelectedPairs] = useState<string[]>([]);
   const [buyPair, setBuyPair] = useState("");
+  const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [buyType, setBuyType] = useState<"market" | "limit">("market");
-  const [amountMode, setAmountMode] = useState<"eur" | "crypto">("eur");
+  const [amountMode, setAmountMode] = useState<"eur" | "crypto" | "percentage">(
+    "eur",
+  );
+  const [sellPercentage, setSellPercentage] = useState<25 | 50 | 75 | 100>(25);
   const [buyAmount, setBuyAmount] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [slippage, setSlippage] = useState("1");
@@ -90,7 +94,9 @@ export default function App() {
     status: string;
     submitted_at: string | null;
     symbol: string;
+    side: string;
     order_type: string;
+    quantity: number;
     amount_eur: number;
     submitted_price: number | null;
   } | null>(null);
@@ -312,11 +318,13 @@ export default function App() {
     setLivePreview(
       await api.previewLiveOrder({
         symbol: buyPair,
-        side: "buy",
+        side: orderSide,
         order_type: buyType,
-        ...(amountMode === "eur"
+        ...(orderSide === "buy" && amountMode === "eur"
           ? { amount_eur: Number(buyAmount) }
-          : { amount_crypto: Number(buyAmount) }),
+          : amountMode === "percentage"
+            ? { sell_percentage: sellPercentage }
+            : { amount_crypto: Number(buyAmount) }),
         ...(buyType === "limit" ? { limit_price: Number(limitPrice) } : {}),
         max_slippage_percent: Number(slippage),
       }),
@@ -326,10 +334,14 @@ export default function App() {
     if (!livePreview || busy) return;
     setBusy(true);
     try {
-      const result = await api.confirmLiveOrder(livePreview.preview_id);
+      const result = await api.confirmLiveOrder(
+        livePreview.preview_id,
+        livePreview.side,
+      );
       setMessage(result.message);
       setLastLiveOrder(result);
       setLivePreview(null);
+      await loadLiveAccount();
     } finally {
       setBusy(false);
     }
@@ -385,6 +397,17 @@ export default function App() {
         : "Lugn";
   }, [markets]);
   const signalClass = getSignalClass;
+  const sellablePairs =
+    liveRisk?.allowed_pairs.filter((symbol) => {
+      const pair = pairs.find((item) => item.symbol === symbol);
+      const balance = liveAccount?.balances.find(
+        (item) => item.display_symbol === pair?.base_symbol,
+      );
+      return pair?.tradable && balance != null && balance.available > 0;
+    }) ?? [];
+  const manualOrderPairs =
+    orderSide === "sell" ? sellablePairs : (liveRisk?.allowed_pairs ?? []);
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -492,7 +515,7 @@ export default function App() {
                               ? "Livekonto"
                               : "Inställningar"}
             </h1>
-            <p>Project Odin v1.2.1 · Komplett gränssnitt</p>
+            <p>Project Odin v1.3.0 · Komplett gränssnitt</p>
           </div>
           <div className="header-actions">
             <button
@@ -1614,6 +1637,9 @@ export default function App() {
                         <th>Tillgängligt</th>
                         <th>Reserverat</th>
                         <th>Uppskattat EUR-värde</th>
+                        <th>Genomsnittligt inköpspris</th>
+                        <th>Uppskattat orealiserat resultat</th>
+                        <th>Pristidpunkt</th>
                         <th>Andel</th>
                       </tr>
                     </thead>
@@ -1631,6 +1657,23 @@ export default function App() {
                             {balance.estimated_eur_value === null
                               ? "Värde saknas"
                               : `≈ ${fmt(balance.estimated_eur_value)} EUR`}
+                          </td>
+                          <td>
+                            {balance.average_acquisition_price_eur === null
+                              ? "Inköpspris saknas"
+                              : `${fmt(balance.average_acquisition_price_eur)} EUR`}
+                          </td>
+                          <td>
+                            {balance.estimated_unrealized_pnl_eur === null
+                              ? "—"
+                              : `≈ ${fmt(balance.estimated_unrealized_pnl_eur)} EUR`}
+                          </td>
+                          <td>
+                            {balance.price_timestamp
+                              ? new Date(
+                                  balance.price_timestamp,
+                                ).toLocaleString("sv-SE")
+                              : "Pristidpunkt saknas"}
                           </td>
                           <td>
                             {balance.allocation_percent === null
@@ -1766,16 +1809,42 @@ export default function App() {
                 {liveRisk && (
                   <div className="live-settings manual-buy">
                     <p className="eyebrow">RIKTIGA PENGAR · MANUELLT</p>
-                    <h2>Manuellt köp</h2>
+                    <h2>Manuell order</h2>
                     <form
                       onSubmit={(event) => {
                         event.preventDefault();
                         runLoad(
                           previewLive(event.currentTarget),
-                          "Kunde inte förhandsgranska köpet",
+                          "Kunde inte förhandsgranska ordern",
                         );
                       }}
                     >
+                      <label>
+                        Sida
+                        <select
+                          aria-label="Ordersida"
+                          value={orderSide}
+                          onChange={(event) => {
+                            const side = event.target.value as "buy" | "sell";
+                            setOrderSide(side);
+                            setAmountMode(side === "sell" ? "crypto" : "eur");
+                            if (
+                              side === "sell" &&
+                              !sellablePairs.includes(buyPair)
+                            )
+                              setBuyPair(sellablePairs[0] ?? "");
+                            if (
+                              side === "buy" &&
+                              !liveRisk.allowed_pairs.includes(buyPair)
+                            )
+                              setBuyPair(liveRisk.allowed_pairs[0] ?? "");
+                            setLivePreview(null);
+                          }}
+                        >
+                          <option value="buy">Köp</option>
+                          <option value="sell">Sälj</option>
+                        </select>
+                      </label>
                       <label>
                         Kryptovaluta
                         <select
@@ -1785,11 +1854,19 @@ export default function App() {
                             setLivePreview(null);
                           }}
                         >
-                          {liveRisk.allowed_pairs.map((symbol) => (
+                          {manualOrderPairs.map((symbol) => (
                             <option key={symbol}>{symbol}</option>
                           ))}
                         </select>
                       </label>
+                      {orderSide === "sell" &&
+                        manualOrderPairs.length === 0 && (
+                          <p className="warning">
+                            Ingen tillåten EUR-tillgång har ett positivt
+                            tillgängligt saldo. Reserverat saldo kan inte
+                            säljas.
+                          </p>
+                        )}
                       <label>
                         Ordertyp
                         <select
@@ -1811,30 +1888,61 @@ export default function App() {
                           value={amountMode}
                           onChange={(event) => {
                             setAmountMode(
-                              event.target.value as "eur" | "crypto",
+                              event.target.value as
+                                "eur" | "crypto" | "percentage",
                             );
                             setLivePreview(null);
                           }}
                         >
-                          <option value="eur">Belopp i EUR</option>
+                          {orderSide === "buy" && (
+                            <option value="eur">Belopp i EUR</option>
+                          )}
                           <option value="crypto">Antal krypto</option>
+                          {orderSide === "sell" && (
+                            <option value="percentage">
+                              Procent av tillgängligt saldo
+                            </option>
+                          )}
                         </select>
                       </label>
-                      <label>
-                        Belopp
-                        <input
-                          aria-label="Köpbelopp"
-                          type="number"
-                          min="0"
-                          step="any"
-                          required
-                          value={buyAmount}
-                          onChange={(event) => {
-                            setBuyAmount(event.target.value);
-                            setLivePreview(null);
-                          }}
-                        />
-                      </label>
+                      {amountMode !== "percentage" ? (
+                        <label>
+                          Belopp
+                          <input
+                            aria-label="Orderbelopp"
+                            type="number"
+                            min="0"
+                            step="any"
+                            required
+                            value={buyAmount}
+                            onChange={(event) => {
+                              setBuyAmount(event.target.value);
+                              setLivePreview(null);
+                            }}
+                          />
+                        </label>
+                      ) : (
+                        <fieldset>
+                          <legend>Andel av tillgängligt saldo</legend>
+                          <div className="live-actions">
+                            {([25, 50, 75, 100] as const).map((percentage) => (
+                              <button
+                                type="button"
+                                key={percentage}
+                                className={
+                                  sellPercentage === percentage ? "active" : ""
+                                }
+                                onClick={() => {
+                                  setSellPercentage(percentage);
+                                  setLivePreview(null);
+                                }}
+                              >
+                                {percentage} %
+                              </button>
+                            ))}
+                          </div>
+                        </fieldset>
+                      )}
                       {buyType === "limit" && (
                         <label>
                           Limitpris
@@ -1866,12 +1974,14 @@ export default function App() {
                         />
                       </label>
                       <Button variant="primary" type="submit">
-                        Förhandsgranska köp
+                        Förhandsgranska{" "}
+                        {orderSide === "sell" ? "försäljning" : "köp"}
                       </Button>
                     </form>
                     <p className="warning">
-                      Marknadspris och beräknad kostnad är uppskattningar. Ingen
-                      order skickas innan en separat bekräftelse.
+                      Marknadspris, kostnad och intäkt är uppskattningar. Ingen
+                      order skickas innan en separat bekräftelse. Reserverade
+                      tillgångar ingår aldrig i säljbara belopp.
                     </p>
                   </div>
                 )}
@@ -1883,7 +1993,9 @@ export default function App() {
                       Kraken-ID: {lastLiveOrder.exchange_order_id ?? "väntar"}
                     </p>
                     <p>
-                      {lastLiveOrder.symbol} · {lastLiveOrder.order_type} ·{" "}
+                      {lastLiveOrder.side} · {lastLiveOrder.symbol} ·{" "}
+                      {lastLiveOrder.order_type} ·{" "}
+                      {fmt(lastLiveOrder.quantity, 8)} ·{" "}
                       {fmt(lastLiveOrder.amount_eur)} EUR · status{" "}
                       {lastLiveOrder.status}
                     </p>
@@ -1896,7 +2008,7 @@ export default function App() {
                         : "tidpunkt saknas"}
                       {lastLiveOrder.submitted_price != null
                         ? ` · pris ${fmt(lastLiveOrder.submitted_price)} EUR`
-                        : ""}
+                        : " · marknadspris fastställs vid utförande"}
                     </p>
                     <div className="live-actions">
                       <Button
@@ -2310,8 +2422,16 @@ export default function App() {
         {livePreview && (
           <div className="live-confirmation" role="dialog" aria-modal="true">
             <article className="panel">
-              <p className="eyebrow">DETTA ÄR EN RIKTIG ORDER</p>
-              <h2>Köp {livePreview.symbol} på Kraken</h2>
+              <p className="eyebrow">
+                {livePreview.side === "sell"
+                  ? "DETTA ÄR EN RIKTIG SÄLJORDER"
+                  : "DETTA ÄR EN RIKTIG ORDER"}
+              </p>
+              <h2>
+                {livePreview.side === "sell" ? "Sälj" : "Köp"}{" "}
+                {livePreview.symbol} på Kraken
+              </h2>
+              <p>Exchange: Kraken</p>
               <p>Ordertyp: {livePreview.order_type}</p>
               <p>EUR-belopp: {fmt(livePreview.requested_amount)} EUR</p>
               <p>Kryptomängd: {fmt(livePreview.estimated_quantity, 8)}</p>
@@ -2325,6 +2445,30 @@ export default function App() {
               <p>Beräknad avgift: {fmt(livePreview.estimated_fee)} EUR</p>
               <p>Beräknad total: {fmt(livePreview.estimated_total)} EUR</p>
               <p>Tillgängligt EUR: {fmt(livePreview.available_eur)} EUR</p>
+              {livePreview.side === "sell" && (
+                <>
+                  <p>
+                    Tillgängligt före order:{" "}
+                    {fmt(livePreview.available_crypto, 8)}
+                  </p>
+                  <p>
+                    Beräknat saldo efter order:{" "}
+                    {fmt(livePreview.available_crypto_after, 8)}
+                  </p>
+                  <p>
+                    Andel av tillgängligt saldo:{" "}
+                    {fmt(livePreview.sell_percentage)} %
+                  </p>
+                  <p>
+                    Beräknad bruttointäkt:{" "}
+                    {fmt(livePreview.estimated_gross_proceeds)} EUR
+                  </p>
+                  <p>
+                    Beräknad nettointäkt:{" "}
+                    {fmt(livePreview.estimated_net_proceeds)} EUR
+                  </p>
+                </>
+              )}
               <p>
                 Beräknat prisintervall: {fmt(livePreview.estimated_price_low)}–
                 {fmt(livePreview.estimated_price_high)} EUR
@@ -2358,7 +2502,9 @@ export default function App() {
                 disabled={busy}
                 onClick={() => void confirmLive()}
               >
-                Bekräfta riktigt köp
+                {livePreview.side === "sell"
+                  ? "Bekräfta riktig försäljning"
+                  : "Bekräfta riktigt köp"}
               </Button>
               <Button variant="secondary" onClick={() => setLivePreview(null)}>
                 Avbryt

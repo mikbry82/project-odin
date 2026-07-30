@@ -137,6 +137,7 @@ async def create_preview(
     order_type: str,
     amount_eur: Decimal | None,
     amount_crypto: Decimal | None = None,
+    sell_percentage: int | None = None,
     limit_price: Decimal | None = None,
     recommendation_price: Decimal | None = None,
     max_slippage_percent: Decimal = Decimal("1"),
@@ -160,9 +161,28 @@ async def create_preview(
         raise LiveTradingViolation(
             "Limitpriset har för många decimaler. Justera priset och skapa en ny förhandsvisning."
         )
-    if (amount_eur is None) == (amount_crypto is None):
+    normalized_balances = await provider.fetch_normalized_balances(credentials)
+    available_crypto = next(
+        (item.available for item in normalized_balances if item.display_symbol == rules.base_asset),
+        Decimal("0"),
+    )
+    if side == "sell":
+        if amount_eur is not None or (amount_crypto is None) == (sell_percentage is None):
+            raise LiveTradingViolation("Ange antal krypto eller procent av tillgängligt saldo.")
+        if available_crypto <= 0:
+            raise LiveTradingViolation("Tillgången saknar tillgängligt saldo.")
+        if sell_percentage is not None:
+            quantity = (available_crypto * Decimal(sell_percentage) / 100).quantize(
+                Decimal(1).scaleb(-rules.quantity_decimals), rounding=ROUND_DOWN
+            )
+        else:
+            if amount_crypto.as_tuple().exponent < -rules.quantity_decimals:
+                raise LiveTradingViolation("Kryptomängden har för många decimaler.")
+            quantity = amount_crypto
+        amount_eur = quantity * price
+    elif (amount_eur is None) == (amount_crypto is None):
         raise LiveTradingViolation("Ange antingen belopp i EUR eller antal krypto.")
-    if amount_crypto is not None:
+    elif amount_crypto is not None:
         if amount_crypto.as_tuple().exponent < -rules.quantity_decimals:
             raise LiveTradingViolation("Kryptomängden har för många decimaler.")
         quantity = amount_crypto
@@ -177,12 +197,14 @@ async def create_preview(
     )
     if quantity < rules.minimum_quantity or total < rules.minimum_cost:
         raise LiveTradingViolation("Beloppet understiger Krakens minimigräns.")
-    balances = await provider.fetch_balances(credentials)
-    required_asset = rules.quote_asset if side == "buy" else rules.base_asset
-    required = total if side == "buy" else quantity
-    balance = balances.get(required_asset, Decimal("0"))
-    if balance < required:
+    available_eur = next(
+        (item.available for item in normalized_balances if item.display_symbol == "EUR"),
+        Decimal("0"),
+    )
+    if side == "buy" and available_eur < total:
         raise LiveTradingViolation("Otillräckligt EUR-saldo.")
+    if side == "sell" and available_crypto < quantity:
+        raise LiveTradingViolation("Otillräckligt tillgängligt kryptosaldo.")
     warnings = ["Riktiga pengar kommer att användas."]
     if recommendation_price:
         movement = abs(market_price - recommendation_price) / recommendation_price
@@ -219,6 +241,8 @@ async def create_preview(
             {
                 "max_slippage_percent": str(max_slippage_percent),
                 "market_price": str(market_price),
+                "available_crypto": str(available_crypto),
+                "sell_percentage": sell_percentage,
                 "risk": {
                     "max_order_eur": settings.max_order_eur,
                     "max_daily_eur": settings.max_daily_eur,
@@ -296,6 +320,15 @@ async def confirm_order(
     preview_price = Decimal(snapshot.get("market_price", str(order.preview_price)))
     if abs(current_price - preview_price) / preview_price > slippage:
         raise LiveTradingViolation("Prisinformationen är för gammal. Skapa en ny förhandsvisning.")
+    if order.side == "sell":
+        rules = await provider.fetch_symbol_rules(order.symbol)
+        balances = await provider.fetch_normalized_balances(credentials)
+        available = next(
+            (item.available for item in balances if item.display_symbol == rules.base_asset),
+            Decimal("0"),
+        )
+        if available < Decimal(str(order.estimated_quantity)):
+            raise LiveTradingViolation("Otillräckligt tillgängligt kryptosaldo.")
     await enforce_risk_limits(
         session,
         settings,

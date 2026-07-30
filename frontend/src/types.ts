@@ -79,6 +79,8 @@ export type LiveBalance = {
   allocation_percent: number | null;
   pricing_status: "direct" | "unpriced";
   price_timestamp: string | null;
+  average_acquisition_price_eur: number | null;
+  estimated_unrealized_pnl_eur: number | null;
 };
 
 export type AccountOrder = {
@@ -139,6 +141,11 @@ export type LiveOrderPreview = {
   pair_status: string;
   price_timestamp: string;
   available_eur: number;
+  available_crypto: number | null;
+  available_crypto_after: number | null;
+  sell_percentage: number | null;
+  estimated_gross_proceeds: number | null;
+  estimated_net_proceeds: number | null;
   max_slippage_percent: number;
   estimated_price_low: number;
   estimated_price_high: number;

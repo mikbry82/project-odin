@@ -83,6 +83,8 @@ class BalanceResponse(BaseModel):
     allocation_percent: float | None
     pricing_status: Literal["direct", "unpriced"]
     price_timestamp: datetime | None
+    average_acquisition_price_eur: float | None
+    estimated_unrealized_pnl_eur: float | None
 
 
 class AccountOrderResponse(BaseModel):
@@ -129,10 +131,11 @@ class LiveModeActivation(BaseModel):
 
 class OrderPreviewInput(BaseModel):
     symbol: str
-    side: Literal["buy"] = "buy"
+    side: Literal["buy", "sell"] = "buy"
     order_type: Literal["market", "limit"]
     amount_eur: float | None = Field(default=None, gt=0)
     amount_crypto: float | None = Field(default=None, gt=0)
+    sell_percentage: Literal[25, 50, 75, 100] | None = None
     limit_price: float | None = Field(default=None, gt=0)
     recommendation_price: float | None = Field(default=None, gt=0)
     max_slippage_percent: float = Field(default=1.0, ge=0.1, le=5)
@@ -158,6 +161,11 @@ class OrderPreviewResponse(BaseModel):
     pair_status: str
     price_timestamp: datetime
     available_eur: float
+    available_crypto: float | None
+    available_crypto_after: float | None
+    sell_percentage: float | None
+    estimated_gross_proceeds: float | None
+    estimated_net_proceeds: float | None
     max_slippage_percent: float
     estimated_price_low: float
     estimated_price_high: float
@@ -168,7 +176,7 @@ class OrderPreviewResponse(BaseModel):
 
 class OrderConfirmationInput(BaseModel):
     preview_id: str
-    confirmation_text: Literal["Bekräfta riktigt köp"]
+    confirmation_text: Literal["Bekräfta riktigt köp", "Bekräfta riktig försäljning"]
 
 
 class LiveOrderResponse(BaseModel):
@@ -178,7 +186,9 @@ class LiveOrderResponse(BaseModel):
     message: str
     submitted_at: datetime | None
     symbol: str
+    side: str
     order_type: str
+    quantity: float
     amount_eur: float
     submitted_price: float | None
 
