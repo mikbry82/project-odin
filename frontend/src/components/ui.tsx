@@ -1,8 +1,89 @@
-import { useMemo } from "react";
+import {
+  createElement,
+  useMemo,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type ReactNode,
+} from "react";
 
 import type { Candle } from "../types";
 
 export const INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"];
+
+type ButtonVariant = "primary" | "secondary" | "danger" | "refresh" | "paper";
+
+const BUTTON_CLASSES: Record<ButtonVariant, string> = {
+  primary: "primary-action",
+  secondary: "secondary-action",
+  danger: "emergency",
+  refresh: "refresh",
+  paper: "paper-enable-button",
+};
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+};
+
+export function Button({
+  variant = "secondary",
+  className = "",
+  type = "button",
+  ...props
+}: ButtonProps) {
+  const classes = [BUTTON_CLASSES[variant], className]
+    .filter(Boolean)
+    .join(" ");
+  return <button className={classes} type={type} {...props} />;
+}
+
+type CardProps = HTMLAttributes<HTMLElement> & {
+  as?: "article" | "section" | "div";
+};
+
+export function Card({ as = "article", className = "", ...props }: CardProps) {
+  return createElement(as, {
+    ...props,
+    className: ["panel", className].filter(Boolean).join(" "),
+  });
+}
+
+export function Badge({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={["badge", className].filter(Boolean).join(" ")}>
+      {children}
+    </span>
+  );
+}
+
+export function EmptyState({ children }: { children: ReactNode }) {
+  return <p className="empty-state">{children}</p>;
+}
+
+export function LoadingState({
+  children = "Laddar…",
+}: {
+  children?: ReactNode;
+}) {
+  return (
+    <p className="loading-state" role="status">
+      {children}
+    </p>
+  );
+}
+
+export function ErrorState({ children }: { children: ReactNode }) {
+  return (
+    <p className="error-state" role="alert">
+      {children}
+    </p>
+  );
+}
 
 type IntervalSelectorProps = {
   intervals?: string[];

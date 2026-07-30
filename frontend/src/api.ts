@@ -15,26 +15,46 @@ import type {
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const DEFAULT_ERROR = "Begäran misslyckades";
+const REQUEST_TIMEOUT_MS = 10_000;
 
 type ErrorPayload = { detail?: string };
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    REQUEST_TIMEOUT_MS,
+  );
   if (options.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, { ...options, headers });
-  } catch {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Odin Core svarade inte i tid. Försök igen.");
+    }
     throw new Error("Kunde inte ansluta till Odin Core.");
+  } finally {
+    window.clearTimeout(timeout);
   }
 
   const contentType = response.headers.get("content-type") ?? "";
-  const body = contentType.includes("application/json")
-    ? ((await response.json()) as T | ErrorPayload)
-    : await response.text();
+  let body: T | ErrorPayload | string;
+  try {
+    body = contentType.includes("application/json")
+      ? ((await response.json()) as T | ErrorPayload)
+      : await response.text();
+  } catch {
+    throw new Error("Odin Core skickade ett ogiltigt svar. Försök igen.");
+  }
 
   if (!response.ok) {
     const detail =
@@ -42,6 +62,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         ? body.detail
         : undefined;
     throw new Error(typeof detail === "string" ? detail : DEFAULT_ERROR);
+  }
+
+  if (!contentType.includes("application/json")) {
+    throw new Error("Odin Core skickade ett oväntat svar. Försök igen.");
   }
 
   return body as T;
@@ -58,8 +82,6 @@ export const api = {
       method: "PUT",
       ...jsonBody({ trading_mode: tradingMode }),
     }),
-  emergency: (path: string) =>
-    request<SystemStatus>(path, { method: "POST" }),
   getMarkets: () => request<MarketResponse>("/api/v1/markets"),
   getAnalysis: (symbol: string, interval: string) =>
     request<Analysis>(
@@ -83,12 +105,9 @@ export const api = {
         take_profit_percent: takeProfitPercent,
       }),
     }),
-  resetPortfolio: () =>
-    request<Portfolio>("/api/v1/paper/reset", { method: "POST" }),
   getScanner: (interval: string) =>
     request<ScannerResponse>(`/api/v1/scanner?interval=${interval}`),
-  getAutoSettings: () =>
-    request<AutoSettings>("/api/v1/scanner/auto/settings"),
+  getAutoSettings: () => request<AutoSettings>("/api/v1/scanner/auto/settings"),
   saveAutoSettings: (settings: AutoSettings) =>
     request<AutoSettings>("/api/v1/scanner/auto/settings", {
       method: "PUT",
@@ -96,8 +115,7 @@ export const api = {
     }),
   runAutoCycle: () =>
     request<AutoCycle>("/api/v1/scanner/auto/run", { method: "POST" }),
-  getPerformance: () =>
-    request<Performance>("/api/v1/scanner/performance"),
+  getPerformance: () => request<Performance>("/api/v1/scanner/performance"),
   getAIAnalysis: (symbol: string, interval: string) =>
     request<AIAnalysis>(
       `/api/v1/ai/analysis?symbol=${symbol}&interval=${interval}`,

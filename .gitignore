@@ -9,6 +9,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+build/
 .coverage
 htmlcov/
 
@@ -29,3 +30,4 @@ postgres_data/
 node_modules/
 dist/
 .next/
+*.tsbuildinfo
