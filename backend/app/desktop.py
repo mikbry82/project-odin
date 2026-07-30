@@ -1,4 +1,5 @@
 import logging
+import os
 import socket
 import sys
 import threading
@@ -21,6 +22,11 @@ def port_is_available(host: str, port: int) -> bool:
 
 def main() -> int:
     configure_logging()
+    if os.getenv("ODIN_CREDENTIAL_STORE_SELF_TEST") == "1":
+        from app.services.credential_store import credential_store
+
+        capability = credential_store.capability(refresh=True)
+        return 0 if capability.available else 4
     try:
         from app.core.config import settings
     except Exception:

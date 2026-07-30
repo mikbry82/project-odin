@@ -4,7 +4,7 @@
   "description": "Stable desktop release of Project Odin.",
   "author": "Project Odin contributors",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.2.1",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
@@ -18,26 +18,31 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "tsc -b",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "latest",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
     "electron": "^43.2.0",
     "electron-builder": "^26.11.1",
+    "jsdom": "^30.0.1",
     "prettier": "^3.9.6",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "vitest": "^4.1.10"
   },
   "build": {
     "appId": "se.projectodin.desktop",
     "productName": "Project Odin",
     "asar": true,
     "directories": {
-      "output": "release-v1.0.0"
+      "output": "release-v1.2.1"
     },
     "files": [
       "electron/**/*",

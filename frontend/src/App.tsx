@@ -17,9 +17,14 @@ import type {
   Analysis,
   AutoCycle,
   AutoSettings,
+  ExchangeConnection,
+  LiveOrderPreview,
+  LiveAccount,
+  LiveRiskSettings,
   Market,
   Performance,
   Portfolio,
+  TradingPair,
   ScannerItem,
   Strategy,
   StrategyEvaluation,
@@ -28,8 +33,19 @@ import type {
   View,
 } from "./types";
 import { formatNumber as fmt, getErrorMessage, getSignalClass } from "./utils";
+import { removeLegacyInterfacePreferences } from "./legacyPreferences";
 
 const intervals = INTERVALS;
+const ASSET_NAMES: Record<string, string> = {
+  BTC: "Bitcoin",
+  ETH: "Ethereum",
+  SOL: "Solana",
+  XRP: "XRP",
+  ADA: "Cardano",
+  DOT: "Polkadot",
+  LINK: "Chainlink",
+  LTC: "Litecoin",
+};
 
 export default function App() {
   const [status, setStatus] = useState<SystemStatus | null>(null),
@@ -53,8 +69,32 @@ export default function App() {
   const [strategies, setStrategies] = useState<Strategy[]>([]),
     [strategyEval, setStrategyEval] = useState<StrategyEvaluation | null>(null),
     [editingStrategy, setEditingStrategy] = useState<Strategy | null>(null);
-  const [expertMode, setExpertMode] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [exchange, setExchange] = useState<ExchangeConnection | null>(null);
+  const [liveRisk, setLiveRisk] = useState<LiveRiskSettings | null>(null);
+  const [livePreview, setLivePreview] = useState<LiveOrderPreview | null>(null);
+  const [liveAccount, setLiveAccount] = useState<LiveAccount | null>(null);
+  const [liveAccountLoading, setLiveAccountLoading] = useState(false);
+  const [pairs, setPairs] = useState<TradingPair[]>([]);
+  const [pairSearch, setPairSearch] = useState("");
+  const [pairMenuOpen, setPairMenuOpen] = useState(false);
+  const [selectedPairs, setSelectedPairs] = useState<string[]>([]);
+  const [buyPair, setBuyPair] = useState("");
+  const [buyType, setBuyType] = useState<"market" | "limit">("market");
+  const [amountMode, setAmountMode] = useState<"eur" | "crypto">("eur");
+  const [buyAmount, setBuyAmount] = useState("");
+  const [limitPrice, setLimitPrice] = useState("");
+  const [slippage, setSlippage] = useState("1");
+  const [lastLiveOrder, setLastLiveOrder] = useState<{
+    exchange_order_id: string | null;
+    status: string;
+    submitted_at: string | null;
+    symbol: string;
+    order_type: string;
+    amount_eur: number;
+    submitted_price: number | null;
+  } | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
   function runLoad(
     task: Promise<unknown>,
     fallback = "Kunde inte uppdatera data",
@@ -104,6 +144,27 @@ export default function App() {
     setStrategies(data);
     if (!editingStrategy && data.length) setEditingStrategy(data[0]);
   }
+  async function loadLiveSettings() {
+    const [connection, risk, discovered] = await Promise.all([
+      api.getExchangeConnection(),
+      api.getLiveRisk(),
+      api.getTradingPairs(),
+    ]);
+    setExchange(connection);
+    setLiveRisk(risk);
+    setSelectedPairs(risk.allowed_pairs);
+    if (!buyPair || !risk.allowed_pairs.includes(buyPair))
+      setBuyPair(risk.allowed_pairs[0] ?? "");
+    setPairs(discovered.pairs);
+  }
+  async function loadLiveAccount() {
+    setLiveAccountLoading(true);
+    try {
+      setLiveAccount(await api.getLiveAccount());
+    } finally {
+      setLiveAccountLoading(false);
+    }
+  }
   async function saveStrategy() {
     if (!editingStrategy) return;
     const saved = await api.saveStrategy(editingStrategy);
@@ -148,6 +209,7 @@ export default function App() {
     }
   }
   useEffect(() => {
+    removeLegacyInterfacePreferences();
     runLoad(loadStatus());
     runLoad(loadMarkets());
     runLoad(loadPortfolio());
@@ -174,12 +236,110 @@ export default function App() {
     runLoad(loadAuto());
     runLoad(loadPerformance());
     runLoad(loadStrategies());
+    runLoad(
+      loadLiveSettings(),
+      "Kunde inte läsa inställningarna för live-handel",
+    );
   }, []);
   useEffect(() => {
     if (!auto?.enabled) return;
     const timer = window.setInterval(() => void runAuto(), 30000);
     return () => window.clearInterval(timer);
   }, [auto?.enabled]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+  async function saveCredentials(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const apiKey = String(data.get("api_key") ?? "");
+    const apiSecret = String(data.get("api_secret") ?? "");
+    setExchange(await api.saveKrakenCredentials(apiKey, apiSecret));
+    form.reset();
+    setMessage("Kraken-nyckeln validerades och sparades säkert");
+  }
+  async function saveRisk(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const allowedPairs = liveRisk?.allowed_pairs ?? [];
+    setLiveRisk(
+      await api.saveLiveRisk({
+        max_order_eur: Number(data.get("max_order_eur")),
+        max_daily_eur: Number(data.get("max_daily_eur")),
+        max_orders_daily: Number(data.get("max_orders_daily")),
+        daily_loss_eur: Number(data.get("daily_loss_eur")),
+        cooldown_seconds: Number(data.get("cooldown_seconds")),
+        allowed_pairs: allowedPairs,
+        pair_limits: allowedPairs.map((symbol) => {
+          const index = pairs.findIndex((pair) => pair.symbol === symbol);
+          const numberOrNull = (name: string) => {
+            const value = String(data.get(`${name}_${index}`) ?? "");
+            return value ? Number(value) : null;
+          };
+          return {
+            symbol,
+            enabled: data.get(`pair_enabled_${index}`) === "on",
+            max_order_eur: numberOrNull("pair_order"),
+            max_daily_eur: numberOrNull("pair_daily"),
+            max_orders_daily: numberOrNull("pair_count"),
+          };
+        }),
+        buy_only: data.get("buy_only") === "on",
+        risk_warning_accepted: data.get("risk_warning_accepted") === "on",
+      }),
+    );
+  }
+  async function saveAllowedPairs(next: string[]) {
+    if (!liveRisk) return;
+    const saved = await api.saveLiveRisk({
+      ...liveRisk,
+      allowed_pairs: next,
+      pair_limits: liveRisk.pair_limits,
+    });
+    setLiveRisk(saved);
+    setSelectedPairs(saved.allowed_pairs);
+    if (!saved.allowed_pairs.includes(buyPair))
+      setBuyPair(saved.allowed_pairs[0] ?? "");
+    setLivePreview(null);
+  }
+  async function enableLive(form: HTMLFormElement) {
+    const phrase = String(new FormData(form).get("confirmation_phrase") ?? "");
+    await api.enableLiveMode(phrase);
+    form.reset();
+    await loadStatus();
+  }
+  async function previewLive(form: HTMLFormElement) {
+    const data = new FormData(form);
+    setLivePreview(
+      await api.previewLiveOrder({
+        symbol: buyPair,
+        side: "buy",
+        order_type: buyType,
+        ...(amountMode === "eur"
+          ? { amount_eur: Number(buyAmount) }
+          : { amount_crypto: Number(buyAmount) }),
+        ...(buyType === "limit" ? { limit_price: Number(limitPrice) } : {}),
+        max_slippage_percent: Number(slippage),
+      }),
+    );
+  }
+  async function confirmLive() {
+    if (!livePreview || busy) return;
+    setBusy(true);
+    try {
+      const result = await api.confirmLiveOrder(livePreview.preview_id);
+      setMessage(result.message);
+      setLastLiveOrder(result);
+      setLivePreview(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function killLiveTrading() {
+    await api.activateLiveKillSwitch();
+    setLivePreview(null);
+    await Promise.all([loadStatus(), loadLiveSettings()]);
+    setMessage("Nödstoppet är aktivt. Nya riktiga ordrar är blockerade.");
+  }
   async function changeMode(trading_mode: TradingMode) {
     setBusy(true);
     try {
@@ -237,6 +397,15 @@ export default function App() {
         </div>
         <nav>
           <button
+            className={view === "live" ? "active" : ""}
+            onClick={() => {
+              setView("live");
+              runLoad(loadLiveAccount(), "Kunde inte uppdatera livekontot");
+            }}
+          >
+            Livekonto
+          </button>
+          <button
             className={view === "overview" ? "active" : ""}
             onClick={() => setView("overview")}
           >
@@ -272,26 +441,22 @@ export default function App() {
           >
             ↗ Resultat
           </button>
-          {expertMode && (
-            <>
-              <div className="nav-divider">EXPERTVERKTYG</div>
-              <button
-                className={view === "scanner" ? "active" : ""}
-                onClick={() => setView("scanner")}
-              >
-                Market Scanner
-              </button>
-              <button
-                className={view === "strategies" ? "active" : ""}
-                onClick={() => {
-                  setView("strategies");
-                  runLoad(loadStrategies());
-                }}
-              >
-                Strategy Lab
-              </button>
-            </>
-          )}
+          <div className="nav-divider">ANALYSVERKTYG</div>
+          <button
+            className={view === "scanner" ? "active" : ""}
+            onClick={() => setView("scanner")}
+          >
+            Market Scanner
+          </button>
+          <button
+            className={view === "strategies" ? "active" : ""}
+            onClick={() => {
+              setView("strategies");
+              runLoad(loadStrategies());
+            }}
+          >
+            Strategy Lab
+          </button>
           <button
             className={view === "settings" ? "active" : ""}
             onClick={() => setView("settings")}
@@ -323,15 +488,29 @@ export default function App() {
                           ? "Resultat"
                           : view === "strategies"
                             ? "Strategy Lab"
-                            : "Inställningar"}
+                            : view === "live"
+                              ? "Livekonto"
+                              : "Inställningar"}
             </h1>
-            <p>Project Odin v1.0.0 · Enkelt läge är standard</p>
+            <p>Project Odin v1.2.1 · Komplett gränssnitt</p>
           </div>
-          <Badge className={`mode-badge ${status?.trading_mode ?? "off"}`}>
-            {status?.trading_mode === "paper"
-              ? "TESTKONTO AKTIVT"
-              : "AUTOPILOT AV"}
-          </Badge>
+          <div className="header-actions">
+            <button
+              className="emergency-button"
+              onClick={() =>
+                runLoad(killLiveTrading(), "Kunde inte aktivera nödstoppet")
+              }
+            >
+              NÖDSTOPP LIVE
+            </button>
+            <Badge className={`mode-badge ${status?.trading_mode ?? "off"}`}>
+              {status?.trading_mode === "live"
+                ? "LIVE · MANUELL BEKRÄFTELSE"
+                : status?.trading_mode === "paper"
+                  ? "TESTKONTO AKTIVT"
+                  : "HANDEL AV"}
+            </Badge>
+          </div>
         </header>
         {!status && !errorMessage && (
           <LoadingState>Ansluter till Odin Core…</LoadingState>
@@ -440,7 +619,7 @@ export default function App() {
                 <p>
                   {status?.trading_mode === "paper"
                     ? "Alla affärer sker med låtsaspengar och kan följas i beslutsloggen."
-                    : "Du har full kontroll. Automatisk riktig handel är fortfarande låst."}
+                    : "Du har full kontroll. Automatisk riktig handel är permanent avstängd."}
                 </p>
               </div>
               {status?.trading_mode !== "paper" ? (
@@ -1374,34 +1553,484 @@ export default function App() {
           </>
         )}
 
+        {view === "live" && (
+          <section className="panel live-account-page">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">KRAKEN SPOT · ENDAST LÄSNING</p>
+                <h2>Livekonto</h2>
+              </div>
+              <Button
+                variant="secondary"
+                disabled={liveAccountLoading}
+                onClick={() =>
+                  runLoad(loadLiveAccount(), "Kunde inte uppdatera livekontot")
+                }
+              >
+                {liveAccountLoading ? "Uppdaterar…" : "Uppdatera"}
+              </Button>
+            </div>
+            {liveAccountLoading && !liveAccount && (
+              <LoadingState>Hämtar saldon och ordrar…</LoadingState>
+            )}
+            {liveAccount && (
+              <>
+                {clock -
+                  new Date(liveAccount.last_successful_refresh).getTime() >
+                  60000 && (
+                  <p className="warning">
+                    Uppgifterna är äldre än en minut. Uppdatera innan du fattar
+                    beslut.
+                  </p>
+                )}
+                <div className="performance-grid">
+                  <div>
+                    <span>Uppskattat portföljvärde</span>
+                    <strong>{fmt(liveAccount.total_estimated_eur)} EUR</strong>
+                    <small>
+                      Uppskattning, inte ett exakt realisationsvärde
+                    </small>
+                  </div>
+                  <div>
+                    <span>Tillgängligt EUR-saldo</span>
+                    <strong>{fmt(liveAccount.available_eur)} EUR</strong>
+                  </div>
+                  <div>
+                    <span>Senast uppdaterat</span>
+                    <strong>
+                      {new Date(
+                        liveAccount.last_successful_refresh,
+                      ).toLocaleString("sv-SE")}
+                    </strong>
+                  </div>
+                </div>
+                <h2>Tillgångar med saldo</h2>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Tillgång</th>
+                        <th>Totalt</th>
+                        <th>Tillgängligt</th>
+                        <th>Reserverat</th>
+                        <th>Uppskattat EUR-värde</th>
+                        <th>Andel</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {liveAccount.balances.map((balance) => (
+                        <tr key={balance.canonical_asset_id}>
+                          <td>
+                            <b>{balance.display_symbol}</b>
+                            <small>{balance.canonical_asset_id}</small>
+                          </td>
+                          <td>{fmt(balance.total, 8)}</td>
+                          <td>{fmt(balance.available, 8)}</td>
+                          <td>{fmt(balance.reserved, 8)}</td>
+                          <td>
+                            {balance.estimated_eur_value === null
+                              ? "Värde saknas"
+                              : `≈ ${fmt(balance.estimated_eur_value)} EUR`}
+                          </td>
+                          <td>
+                            {balance.allocation_percent === null
+                              ? "—"
+                              : `${fmt(balance.allocation_percent)} %`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {liveRisk && (
+                  <div className="live-settings">
+                    <p className="eyebrow">HANDELSURVAL</p>
+                    <h2>Tillåtna kryptovalutor</h2>
+                    <button
+                      type="button"
+                      className="multi-select-trigger"
+                      onClick={() => setPairMenuOpen(!pairMenuOpen)}
+                    >
+                      {selectedPairs.length} valda
+                    </button>
+                    {pairMenuOpen && (
+                      <div className="multi-select-menu">
+                        <input
+                          aria-label="Sök kryptovaluta"
+                          value={pairSearch}
+                          onChange={(event) =>
+                            setPairSearch(event.target.value)
+                          }
+                          placeholder="Sök namn, symbol eller Kraken-ID"
+                        />
+                        <div className="multi-select-actions">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedPairs(
+                                pairs
+                                  .filter((pair) => pair.tradable)
+                                  .map((pair) => pair.symbol),
+                              )
+                            }
+                          >
+                            Välj alla
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPairs([])}
+                          >
+                            Rensa
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedPairs(
+                                ["BTC/EUR", "ETH/EUR"].filter((symbol) =>
+                                  pairs.some((pair) => pair.symbol === symbol),
+                                ),
+                              )
+                            }
+                          >
+                            Återställ standard
+                          </button>
+                        </div>
+                        <div className="multi-select-options">
+                          {pairs
+                            .filter((pair) => {
+                              const haystack =
+                                `${ASSET_NAMES[pair.base_symbol] ?? pair.base_symbol} ${pair.base_symbol} ${pair.symbol} ${pair.exchange_pair_id}`.toLowerCase();
+                              return (
+                                pair.tradable &&
+                                haystack.includes(pairSearch.toLowerCase())
+                              );
+                            })
+                            .map((pair) => (
+                              <label key={pair.exchange_pair_id}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedPairs.includes(pair.symbol)}
+                                  onChange={() =>
+                                    setSelectedPairs((current) =>
+                                      current.includes(pair.symbol)
+                                        ? current.filter(
+                                            (item) => item !== pair.symbol,
+                                          )
+                                        : [...current, pair.symbol],
+                                    )
+                                  }
+                                />
+                                <span>
+                                  <b>
+                                    {ASSET_NAMES[pair.base_symbol] ??
+                                      pair.base_symbol}
+                                  </b>
+                                  {" — "}
+                                  {pair.symbol} · {pair.status} · min{" "}
+                                  {fmt(pair.minimum_cost)} EUR
+                                </span>
+                              </label>
+                            ))}
+                        </div>
+                        <Button
+                          variant="primary"
+                          disabled={selectedPairs.length === 0}
+                          onClick={() =>
+                            runLoad(
+                              saveAllowedPairs(selectedPairs),
+                              "Kunde inte spara tillåtna kryptovalutor",
+                            )
+                          }
+                        >
+                          Spara urval
+                        </Button>
+                      </div>
+                    )}
+                    <div className="selected-chips">
+                      {selectedPairs.map((symbol) => (
+                        <button
+                          type="button"
+                          key={symbol}
+                          onClick={() =>
+                            setSelectedPairs((current) =>
+                              current.filter((item) => item !== symbol),
+                            )
+                          }
+                        >
+                          {symbol} ×
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {liveRisk && (
+                  <div className="live-settings manual-buy">
+                    <p className="eyebrow">RIKTIGA PENGAR · MANUELLT</p>
+                    <h2>Manuellt köp</h2>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        runLoad(
+                          previewLive(event.currentTarget),
+                          "Kunde inte förhandsgranska köpet",
+                        );
+                      }}
+                    >
+                      <label>
+                        Kryptovaluta
+                        <select
+                          value={buyPair}
+                          onChange={(event) => {
+                            setBuyPair(event.target.value);
+                            setLivePreview(null);
+                          }}
+                        >
+                          {liveRisk.allowed_pairs.map((symbol) => (
+                            <option key={symbol}>{symbol}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Ordertyp
+                        <select
+                          value={buyType}
+                          onChange={(event) => {
+                            setBuyType(
+                              event.target.value as "market" | "limit",
+                            );
+                            setLivePreview(null);
+                          }}
+                        >
+                          <option value="market">Marknadsorder</option>
+                          <option value="limit">Limitorder</option>
+                        </select>
+                      </label>
+                      <label>
+                        Inmatningssätt
+                        <select
+                          value={amountMode}
+                          onChange={(event) => {
+                            setAmountMode(
+                              event.target.value as "eur" | "crypto",
+                            );
+                            setLivePreview(null);
+                          }}
+                        >
+                          <option value="eur">Belopp i EUR</option>
+                          <option value="crypto">Antal krypto</option>
+                        </select>
+                      </label>
+                      <label>
+                        Belopp
+                        <input
+                          aria-label="Köpbelopp"
+                          type="number"
+                          min="0"
+                          step="any"
+                          required
+                          value={buyAmount}
+                          onChange={(event) => {
+                            setBuyAmount(event.target.value);
+                            setLivePreview(null);
+                          }}
+                        />
+                      </label>
+                      {buyType === "limit" && (
+                        <label>
+                          Limitpris
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            required
+                            value={limitPrice}
+                            onChange={(event) => {
+                              setLimitPrice(event.target.value);
+                              setLivePreview(null);
+                            }}
+                          />
+                        </label>
+                      )}
+                      <label>
+                        Högsta slippage (%)
+                        <input
+                          type="number"
+                          min="0.1"
+                          max="5"
+                          step="0.1"
+                          value={slippage}
+                          onChange={(event) => {
+                            setSlippage(event.target.value);
+                            setLivePreview(null);
+                          }}
+                        />
+                      </label>
+                      <Button variant="primary" type="submit">
+                        Förhandsgranska köp
+                      </Button>
+                    </form>
+                    <p className="warning">
+                      Marknadspris och beräknad kostnad är uppskattningar. Ingen
+                      order skickas innan en separat bekräftelse.
+                    </p>
+                  </div>
+                )}
+                {lastLiveOrder && (
+                  <div className="live-settings">
+                    <p className="eyebrow">ORDERRESULTAT</p>
+                    <h2>Ordern har skickats – inte nödvändigtvis fyllts</h2>
+                    <p>
+                      Kraken-ID: {lastLiveOrder.exchange_order_id ?? "väntar"}
+                    </p>
+                    <p>
+                      {lastLiveOrder.symbol} · {lastLiveOrder.order_type} ·{" "}
+                      {fmt(lastLiveOrder.amount_eur)} EUR · status{" "}
+                      {lastLiveOrder.status}
+                    </p>
+                    <p>
+                      Skickad{" "}
+                      {lastLiveOrder.submitted_at
+                        ? new Date(lastLiveOrder.submitted_at).toLocaleString(
+                            "sv-SE",
+                          )
+                        : "tidpunkt saknas"}
+                      {lastLiveOrder.submitted_price != null
+                        ? ` · pris ${fmt(lastLiveOrder.submitted_price)} EUR`
+                        : ""}
+                    </p>
+                    <div className="live-actions">
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          document
+                            .querySelector(".live-account-page table")
+                            ?.scrollIntoView()
+                        }
+                      >
+                        Visa bland öppna ordrar
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          runLoad(
+                            loadLiveAccount(),
+                            "Kunde inte uppdatera Livekonto",
+                          )
+                        }
+                      >
+                        Uppdatera Livekonto
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                <h2>Öppna spotordrar</h2>
+                {liveAccount.open_orders.length === 0 ? (
+                  <EmptyState>Inga öppna spotordrar.</EmptyState>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <tbody>
+                        {liveAccount.open_orders.map((orderItem) => (
+                          <tr key={orderItem.exchange_order_id}>
+                            <td>{orderItem.symbol}</td>
+                            <td>{orderItem.side}</td>
+                            <td>{orderItem.order_type}</td>
+                            <td>
+                              {fmt(orderItem.filled_quantity, 8)} /{" "}
+                              {fmt(orderItem.quantity, 8)}
+                            </td>
+                            <td>{orderItem.status}</td>
+                            <td>
+                              <Button
+                                variant="secondary"
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Avbryt den öppna ordern ${orderItem.exchange_order_id}?`,
+                                    )
+                                  )
+                                    runLoad(
+                                      api
+                                        .cancelLiveOrder(
+                                          orderItem.exchange_order_id,
+                                        )
+                                        .then(loadLiveAccount),
+                                      "Kunde inte avbryta ordern",
+                                    );
+                                }}
+                              >
+                                Avbryt
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <h2>Senaste slutförda och avbrutna ordrar</h2>
+                <div className="table-wrap">
+                  <table>
+                    <tbody>
+                      {liveAccount.recent_orders.map((orderItem) => (
+                        <tr key={orderItem.exchange_order_id}>
+                          <td>{orderItem.symbol}</td>
+                          <td>{orderItem.side}</td>
+                          <td>{orderItem.status}</td>
+                          <td>{fmt(orderItem.filled_quantity, 8)}</td>
+                          <td>
+                            {orderItem.average_fill_price === null
+                              ? "—"
+                              : fmt(orderItem.average_fill_price)}
+                          </td>
+                          <td>
+                            Avgift{" "}
+                            {orderItem.fee === null
+                              ? "saknas"
+                              : fmt(orderItem.fee, 8)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <h2>Senaste avslut och avgifter</h2>
+                <div className="table-wrap">
+                  <table>
+                    <tbody>
+                      {liveAccount.recent_fills.map((fill) => (
+                        <tr key={fill.trade_id}>
+                          <td>{fill.symbol}</td>
+                          <td>{fill.side}</td>
+                          <td>{fmt(fill.quantity, 8)}</td>
+                          <td>{fmt(fill.price)}</td>
+                          <td>
+                            Avgift{" "}
+                            {fill.fee === null ? "saknas" : fmt(fill.fee, 8)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
         {view === "settings" && (
           <section className="panel settings-page">
             <p className="eyebrow">INSTÄLLNINGAR</p>
-            <h2>Gör Odin lagom enkel för dig</h2>
-            <div className="setting">
-              <div>
-                <b>Expertläge</b>
-                <small>
-                  Visar tekniska verktyg som Market Scanner och Strategy Lab.
-                  Enkelt läge rekommenderas för de flesta.
-                </small>
-              </div>
-              <button
-                className={expertMode ? "toggle on" : "toggle"}
-                onClick={() => setExpertMode(!expertMode)}
-              >
-                {expertMode ? "På" : "Av"}
-              </button>
-            </div>
+            <h2>Odins kompletta gränssnitt</h2>
             <div className="setting">
               <div>
                 <b>Automatisk riktig handel</b>
                 <small>
-                  Förblir låst tills testnet, riskmotor och fullständig
-                  säkerhetskontroll är klara.
+                  Är permanent avstängd. Varje riktig order kräver en ny
+                  förhandsvisning och en aktiv manuell bekräftelse.
                 </small>
               </div>
-              <span>Låst</span>
+              <span>Permanent av</span>
             </div>
             <div className="setting">
               <div>
@@ -1416,12 +2045,326 @@ export default function App() {
               <div>
                 <b>Språk i appen</b>
                 <small>
-                  Tekniska värden visas bara när du själv väljer att se dem.
+                  Tekniska värden, mätvärden och kontroller visas med tydliga
+                  svenska förklaringar.
                 </small>
               </div>
-              <span>Enkel svenska</span>
+              <span>Svenska</span>
             </div>
+            <div className="live-settings">
+              <p className="eyebrow">KRAKEN SPOT</p>
+              <h2>Säker anslutning</h2>
+              <p>
+                Minsta behörigheter: <b>Query Funds</b> och{" "}
+                <b>Create &amp; modify orders</b>. Aktivera aldrig{" "}
+                <b>Withdraw Funds</b>.
+              </p>
+              <p>Status: {exchange?.status ?? "kontrolleras…"}</p>
+              {exchange?.warning && (
+                <p className="warning">{exchange.warning}</p>
+              )}
+              <form
+                autoComplete="off"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  runLoad(
+                    saveCredentials(event.currentTarget),
+                    "Kunde inte ansluta Kraken",
+                  );
+                }}
+              >
+                <label>
+                  API-nyckel
+                  <input
+                    name="api_key"
+                    type="password"
+                    required
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  Privat API-nyckel
+                  <input
+                    name="api_secret"
+                    type="password"
+                    required
+                    autoComplete="off"
+                  />
+                </label>
+                <Button variant="primary" type="submit">
+                  Validera och spara säkert
+                </Button>
+              </form>
+              <div className="live-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    runLoad(
+                      api.testCredentialStore().then((result) => {
+                        setMessage(result.message);
+                        if (!result.available) {
+                          setErrorMessage(result.message);
+                        }
+                      }),
+                      "Kunde inte testa säker lagring",
+                    )
+                  }
+                >
+                  Testa säker lagring
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    runLoad(
+                      api.testExchangeConnection().then(setExchange),
+                      "Kunde inte testa Kraken-anslutningen",
+                    )
+                  }
+                >
+                  Testa anslutning
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    runLoad(
+                      api.deleteKrakenCredentials().then(async (next) => {
+                        setExchange(next);
+                        await Promise.all([loadStatus(), loadLiveSettings()]);
+                      }),
+                      "Kunde inte ta bort Kraken-nyckeln",
+                    )
+                  }
+                >
+                  Ta bort nyckel
+                </Button>
+              </div>
+            </div>
+            {liveRisk && (
+              <div className="live-settings">
+                <p className="eyebrow">RISKBARRIÄRER</p>
+                <h2>Backend-enforced gränser</h2>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    runLoad(
+                      saveRisk(event.currentTarget),
+                      "Kunde inte spara riskgränser",
+                    );
+                  }}
+                >
+                  <fieldset className="pair-limits">
+                    <legend>Valfria gränser per par</legend>
+                    {pairs
+                      .filter((pair) =>
+                        liveRisk.allowed_pairs.includes(pair.symbol),
+                      )
+                      .map((pair) => {
+                        const index = pairs.findIndex(
+                          (item) => item.symbol === pair.symbol,
+                        );
+                        const limit = liveRisk.pair_limits.find(
+                          (item) => item.symbol === pair.symbol,
+                        );
+                        return (
+                          <div key={pair.symbol} className="pair-limit-row">
+                            <b>{pair.symbol}</b>
+                            <label>
+                              <input
+                                name={`pair_enabled_${index}`}
+                                type="checkbox"
+                                defaultChecked={limit?.enabled ?? true}
+                              />{" "}
+                              Aktivt
+                            </label>
+                            <input
+                              aria-label={`${pair.symbol} högst per order`}
+                              name={`pair_order_${index}`}
+                              type="number"
+                              placeholder="Högst/order EUR"
+                              defaultValue={limit?.max_order_eur ?? ""}
+                            />
+                            <input
+                              aria-label={`${pair.symbol} högst per dag`}
+                              name={`pair_daily_${index}`}
+                              type="number"
+                              placeholder="Högst/dag EUR"
+                              defaultValue={limit?.max_daily_eur ?? ""}
+                            />
+                            <input
+                              aria-label={`${pair.symbol} högst antal`}
+                              name={`pair_count_${index}`}
+                              type="number"
+                              placeholder="Antal/dag"
+                              defaultValue={limit?.max_orders_daily ?? ""}
+                            />
+                          </div>
+                        );
+                      })}
+                  </fieldset>
+                  <label>
+                    Högst per order (EUR)
+                    <input
+                      name="max_order_eur"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      defaultValue={liveRisk.max_order_eur}
+                    />
+                  </label>
+                  <label>
+                    Högst per dag (EUR)
+                    <input
+                      name="max_daily_eur"
+                      type="number"
+                      min="1"
+                      max="5000"
+                      defaultValue={liveRisk.max_daily_eur}
+                    />
+                  </label>
+                  <label>
+                    Högst antal per dag
+                    <input
+                      name="max_orders_daily"
+                      type="number"
+                      min="1"
+                      max="20"
+                      defaultValue={liveRisk.max_orders_daily}
+                    />
+                  </label>
+                  <label>
+                    Daglig förlustgräns (EUR)
+                    <input
+                      name="daily_loss_eur"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      defaultValue={liveRisk.daily_loss_eur}
+                    />
+                  </label>
+                  <label>
+                    Säkerhetspaus (sekunder)
+                    <input
+                      name="cooldown_seconds"
+                      type="number"
+                      min="60"
+                      defaultValue={liveRisk.cooldown_seconds}
+                    />
+                  </label>
+                  <label>
+                    <input
+                      name="buy_only"
+                      type="checkbox"
+                      defaultChecked={liveRisk.buy_only}
+                    />{" "}
+                    Endast köp
+                  </label>
+                  <label>
+                    <input
+                      name="risk_warning_accepted"
+                      type="checkbox"
+                      defaultChecked={liveRisk.risk_warning_accepted}
+                    />{" "}
+                    Jag förstår att riktiga pengar kan förloras
+                  </label>
+                  <Button variant="primary" type="submit">
+                    Spara riskgränser
+                  </Button>
+                </form>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    runLoad(
+                      enableLive(event.currentTarget),
+                      "Kunde inte aktivera live-läget",
+                    );
+                  }}
+                >
+                  <label>
+                    Skriv JAG FÖRSTÅR RISKEN
+                    <input name="confirmation_phrase" autoComplete="off" />
+                  </label>
+                  <Button variant="secondary" type="submit">
+                    Aktivera live med manuell bekräftelse
+                  </Button>
+                </form>
+                {liveRisk.kill_switch_active && (
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      runLoad(
+                        api.resetLiveKillSwitch().then(async (next) => {
+                          setStatus(next);
+                          await loadLiveSettings();
+                        }),
+                        "Kunde inte återställa nödstoppet",
+                      )
+                    }
+                  >
+                    Återställ nödstopp manuellt
+                  </Button>
+                )}
+              </div>
+            )}
           </section>
+        )}
+        {livePreview && (
+          <div className="live-confirmation" role="dialog" aria-modal="true">
+            <article className="panel">
+              <p className="eyebrow">DETTA ÄR EN RIKTIG ORDER</p>
+              <h2>Köp {livePreview.symbol} på Kraken</h2>
+              <p>Ordertyp: {livePreview.order_type}</p>
+              <p>EUR-belopp: {fmt(livePreview.requested_amount)} EUR</p>
+              <p>Kryptomängd: {fmt(livePreview.estimated_quantity, 8)}</p>
+              <p>
+                Aktuellt marknadspris: {fmt(livePreview.current_market_price)}{" "}
+                EUR
+              </p>
+              {livePreview.order_type === "limit" && (
+                <p>Limitpris: {fmt(livePreview.limit_price)} EUR</p>
+              )}
+              <p>Beräknad avgift: {fmt(livePreview.estimated_fee)} EUR</p>
+              <p>Beräknad total: {fmt(livePreview.estimated_total)} EUR</p>
+              <p>Tillgängligt EUR: {fmt(livePreview.available_eur)} EUR</p>
+              <p>
+                Beräknat prisintervall: {fmt(livePreview.estimated_price_low)}–
+                {fmt(livePreview.estimated_price_high)} EUR
+              </p>
+              <p>
+                Pris hämtat{" "}
+                {new Date(livePreview.price_timestamp).toLocaleString("sv-SE")}{" "}
+                · giltig till{" "}
+                {new Date(livePreview.expires_at).toLocaleString("sv-SE")}
+              </p>
+              <p>
+                Riskgränser: högst {fmt(livePreview.maximum_order_eur)}{" "}
+                EUR/order, slippage {fmt(livePreview.max_slippage_percent)} %.
+              </p>
+              <ul>
+                {Object.entries(livePreview.applied_risk_limits).map(
+                  ([name, value]) => (
+                    <li key={name}>
+                      {name}: {value == null ? "ej satt" : String(value)}
+                    </li>
+                  ),
+                )}
+              </ul>
+              {livePreview.warnings.map((warning) => (
+                <p className="warning" key={warning}>
+                  {warning}
+                </p>
+              ))}
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => void confirmLive()}
+              >
+                Bekräfta riktigt köp
+              </Button>
+              <Button variant="secondary" onClick={() => setLivePreview(null)}>
+                Avbryt
+              </Button>
+            </article>
+          </div>
         )}
       </main>
     </div>

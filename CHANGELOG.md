@@ -2,6 +2,90 @@
 
 All notable changes to Project Odin are documented in this file.
 
+## [1.2.1] - 2026-07-31
+
+### Added
+
+- Compact searchable multi-select with chips, select-all, clear, and reset-default
+  actions for active backend-approved EUR spot pairs.
+- Manual market/limit buy preview on Livekonto with EUR or crypto amount entry,
+  slippage protection, estimated execution range, current balance, Kraken
+  minimums/precision, and applied risk limits.
+- Preview invalidation after changed inputs, risk settings, expiry, excessive
+  price movement, disabled live mode, or emergency stop.
+- Post-submission status card that never assumes an accepted order was filled.
+
+## [Unreleased]
+
+### Changed
+
+- Odin now uses one complete interface for all users. Market Scanner, Strategy Lab,
+  technical metrics, diagnostics, market data, risk settings, and advanced controls
+  are always visible.
+- Removed the former interface-level selector and defensively discard its legacy
+  browser preferences. Older API and configuration payloads with unknown fields
+  remain tolerated.
+- Live-trading activation, risk acceptance, manual preview and confirmation, and
+  the global emergency stop are unchanged.
+
+### Added
+
+- Read-only Livekonto with normalized non-zero balances, available/reserved
+  amounts, explicitly estimated EUR values, allocation, open and recent spot
+  orders, fills, and fees.
+- Dynamic cached Kraken `AssetPairs` discovery, EUR filtering, status/minimum/
+  precision rules, and XBT/BTC plus canonical asset normalization.
+- Configurable backend-authoritative multi-asset allowlist and optional per-pair
+  order, daily amount, and daily count limits. The most restrictive global or
+  per-pair limit wins.
+- Multi-pair previews sourced only from the backend allowlist with current Kraken
+  rules, balance validation, estimated fee/total, and price timestamp.
+
+## [1.1.1] - 2026-07-30
+
+Hotfix for secure Kraken credential storage in the packaged Windows application.
+
+### Fixed
+
+- Package the Windows keyring backend and its required `win32ctypes` support.
+- Require a functional Windows Credential Manager backend and reject null, fallback,
+  and plaintext backends.
+- Verify temporary write/read/delete behavior at startup without touching real Kraken
+  credentials.
+- Make credential replacement atomic and clean up both entries after partial failure.
+- Report typed Swedish credential-store errors without logging secrets or raw
+  exception messages.
+- Add a localhost-only **Testa säker lagring** action and packaged executable
+  self-test.
+
+## [1.1.0] - 2026-07-30
+
+Safety-gated foundation for manually confirmed Kraken spot trading. Live trading is
+disabled by default and cannot be triggered automatically or by an AI
+recommendation. Simulation and strategy calculations are unchanged.
+
+### Added
+
+- Provider-independent exchange interface and isolated Kraken Spot provider.
+- Windows Credential Manager-compatible keyring storage; secrets are never returned
+  to the frontend or stored in application data.
+- Restricted credential validation with explicit incomplete-permission warning.
+- Conservative backend risk limits, short-lived order previews, single-use
+  confirmation, client order IDs, audit transitions, and uncertain-result status.
+- Persistent global live kill switch and separately confirmed open-order
+  cancellation.
+- Swedish connection, risk, preview, real-money confirmation, and error UI.
+- Mock-only safety tests and a separately gated manual Kraken smoke script.
+- `LIVE_TRADING_SECURITY.md`.
+
+### Security
+
+- No automated live submission path exists.
+- No blind retry occurs after a potentially submitted order times out.
+- Kraken withdrawal permissions are explicitly forbidden.
+- Manual controlled Kraken validation remains required before this foundation can be
+  considered safe or complete.
+
 ## [1.0.0] - 2026-07-30
 
 First stable production release. This release is limited to release hardening,

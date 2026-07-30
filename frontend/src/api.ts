@@ -11,6 +11,12 @@ import type {
   StrategyEvaluation,
   SystemStatus,
   TradingMode,
+  ExchangeConnection,
+  CredentialStoreStatus,
+  LiveRiskSettings,
+  LiveOrderPreview,
+  LiveAccount,
+  PairDiscovery,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
@@ -82,6 +88,92 @@ export const api = {
       method: "PUT",
       ...jsonBody({ trading_mode: tradingMode }),
     }),
+  getExchangeConnection: () =>
+    request<ExchangeConnection>("/api/v1/live/connection"),
+  testCredentialStore: () =>
+    request<CredentialStoreStatus>("/api/v1/live/credential-store/test", {
+      method: "POST",
+    }),
+  saveKrakenCredentials: (apiKey: string, apiSecret: string) =>
+    request<ExchangeConnection>("/api/v1/live/credentials", {
+      method: "POST",
+      ...jsonBody({ api_key: apiKey, api_secret: apiSecret }),
+    }),
+  testExchangeConnection: () =>
+    request<ExchangeConnection>("/api/v1/live/connection/test", {
+      method: "POST",
+    }),
+  deleteKrakenCredentials: () =>
+    request<ExchangeConnection>("/api/v1/live/credentials", {
+      method: "DELETE",
+    }),
+  getLiveRisk: () => request<LiveRiskSettings>("/api/v1/live/risk"),
+  getLiveAccount: () => request<LiveAccount>("/api/v1/live/account"),
+  getTradingPairs: (refresh = false) =>
+    request<PairDiscovery>(`/api/v1/live/pairs?refresh=${refresh}`),
+  saveLiveRisk: (settings: Omit<LiveRiskSettings, "kill_switch_active">) =>
+    request<LiveRiskSettings>("/api/v1/live/risk", {
+      method: "PUT",
+      ...jsonBody(settings),
+    }),
+  enableLiveMode: (confirmationPhrase: string) =>
+    request<{ trading_mode: "live" }>("/api/v1/live/mode/enable", {
+      method: "POST",
+      ...jsonBody({ confirmation_phrase: confirmationPhrase }),
+    }),
+  activateLiveKillSwitch: () =>
+    request<{ kill_switch_active: boolean }>("/api/v1/live/kill-switch", {
+      method: "POST",
+    }),
+  resetLiveKillSwitch: () =>
+    request<SystemStatus>("/api/v1/system/reset-emergency-stop", {
+      method: "POST",
+    }),
+  previewLiveOrder: (payload: {
+    symbol: string;
+    side: "buy";
+    order_type: "market" | "limit";
+    amount_eur?: number;
+    amount_crypto?: number;
+    limit_price?: number;
+    recommendation_price?: number;
+    max_slippage_percent: number;
+  }) =>
+    request<LiveOrderPreview>("/api/v1/live/preview", {
+      method: "POST",
+      ...jsonBody(payload),
+    }),
+  confirmLiveOrder: (previewId: string) =>
+    request<{
+      internal_order_id: string;
+      status: string;
+      exchange_order_id: string | null;
+      message: string;
+      submitted_at: string | null;
+      symbol: string;
+      order_type: string;
+      amount_eur: number;
+      submitted_price: number | null;
+    }>("/api/v1/live/orders/confirm", {
+      method: "POST",
+      ...jsonBody({
+        preview_id: previewId,
+        confirmation_text: "Bekräfta riktigt köp",
+      }),
+    }),
+  cancelAllLiveOrders: () =>
+    request<{ cancelled: number }>("/api/v1/live/orders/cancel-all", {
+      method: "POST",
+      ...jsonBody({ confirmation_text: "Avbryt alla öppna ordrar" }),
+    }),
+  cancelLiveOrder: (exchangeOrderId: string) =>
+    request<{ cancelled: boolean }>(
+      `/api/v1/live/orders/${encodeURIComponent(exchangeOrderId)}/cancel`,
+      {
+        method: "POST",
+        ...jsonBody({ confirmation_text: "Avbryt öppen order" }),
+      },
+    ),
   getMarkets: () => request<MarketResponse>("/api/v1/markets"),
   getAnalysis: (symbol: string, interval: string) =>
     request<Analysis>(

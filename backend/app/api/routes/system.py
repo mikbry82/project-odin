@@ -12,6 +12,9 @@ router = APIRouter(prefix="/system", tags=["system"])
 def to_response(state) -> SystemStatusResponse:
     return SystemStatusResponse(
         trading_mode=TradingMode(state.trading_mode),
+        operating_mode=(
+            "live_confirmation" if state.trading_mode == TradingMode.LIVE.value else "simulation"
+        ),
         emergency_stop=state.emergency_stop,
         live_trading_available=False,
         updated_at=state.updated_at,

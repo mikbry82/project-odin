@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -11,11 +12,13 @@ from app.core.config import settings
 from app.core.logging import configure_logging
 from app.db.base import Base
 from app.db.session import engine
+from app.services.credential_store import credential_store
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     configure_logging()
+    await asyncio.to_thread(credential_store.capability, refresh=True)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     yield
@@ -24,7 +27,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title=settings.app_name,
-    version="1.0.0",
+    version="1.2.1",
     debug=settings.app_debug,
     lifespan=lifespan,
 )

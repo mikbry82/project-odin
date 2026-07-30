@@ -1,9 +1,10 @@
 from fastapi import APIRouter
 
-from app.api.routes import ai_engine, markets, paper, scanner, strategies, system
+from app.api.routes import ai_engine, live_trading, markets, paper, scanner, strategies, system
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(system.router)
+api_router.include_router(live_trading.router)
 api_router.include_router(markets.router)
 api_router.include_router(paper.router)
 api_router.include_router(scanner.router)

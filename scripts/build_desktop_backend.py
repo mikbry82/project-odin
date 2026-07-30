@@ -27,6 +27,16 @@ def main() -> int:
         "asyncpg",
         "--collect-all",
         "uvicorn",
+        "--hidden-import",
+        "keyring.backends.Windows",
+        "--hidden-import",
+        "win32ctypes.pywin32.win32cred",
+        "--hidden-import",
+        "win32ctypes.pywin32.pywintypes",
+        "--collect-submodules",
+        "win32ctypes.core",
+        "--copy-metadata",
+        "keyring",
         str(ENTRYPOINT),
     ]
     return subprocess.call(command, cwd=BACKEND)
