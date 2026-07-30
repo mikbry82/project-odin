@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: project-odin-backend
-Version: 0.8.2
+Version: 0.8.3
 Summary: Backend for Project Odin, an automated AI-assisted trading platform.
 Requires-Python: >=3.13
 Requires-Dist: alembic<2,>=1.14

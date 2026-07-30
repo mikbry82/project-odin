@@ -2,6 +2,42 @@
 
 All notable changes to Project Odin are documented in this file.
 
+## [0.8.3] - 2026-07-30
+
+Test-stability release with no changes to production endpoints, database behavior,
+trading logic, recommendations, or strategy calculations.
+
+### Fixed
+
+- Updated the market fallback test to derive its expected count from the configured watchlist.
+- Isolated API tests from the production PostgreSQL lifespan with FastAPI dependency overrides.
+- Tested the health router in an isolated application instead of assuming production registration.
+- Replaced FastAPI internal route-object introspection with stable HTTP status assertions.
+- Removed all Docker and external-network requirements from the backend unit suite.
+
+### Files affected
+
+- `backend/tests/conftest.py`
+- `backend/tests/test_health.py`
+- `backend/tests/test_markets.py`
+- `backend/tests/test_system.py`
+- `backend/app/main.py`
+- `backend/pyproject.toml`
+- `backend/project_odin_backend.egg-info/PKG-INFO`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `frontend/.prettierignore`
+- `frontend/src/App.tsx`
+- `README.md`
+- `CHANGELOG.md`
+
+### Verification
+
+- Frontend formatting, TypeScript lint, and production build pass.
+- Backend Ruff formatting, Ruff lint, compilation, and wheel build pass.
+- Backend test suite passes: 15 tests, 0 failures, 0 skips.
+- Docker Compose configuration parsing and `git diff --check` pass.
+
 ## [0.8.2] - 2026-07-30
 
 Quality-focused release with no new functionality or changes to trading behavior,

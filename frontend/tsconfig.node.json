@@ -2,6 +2,7 @@
   "compilerOptions": {
     "composite": true,
     "emitDeclarationOnly": true,
+    "outDir": "./node_modules/.cache/tsconfig-node",
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",

@@ -1,70 +1,73 @@
-# Project Odin v0.7.0 — Explainable AI Engine
+# Project Odin v0.8.3
 
-v0.7 bygger vidare på den fungerande Market Scanner och automatiska paper-handeln.
+Project Odin is an AI-assisted market analysis and paper-trading application with
+explainable, deterministic recommendations. The default interface is designed for
+beginners, while technical tools remain available through Expert Mode.
 
-## Nytt
+## Current capabilities
 
-- **AI Center** med flera specialiserade analysmoduler
-- **Technical Analyst** för EMA, RSI, MACD och ATR
-- **Market Regime Analyst** för trend, prisförändring och volymdeltagande
-- **Risk Manager** som fungerar som säkerhetsspärr
-- **Portfolio Manager** som kontrollerar saldo, dubbelexponering och positionsgräns
-- **Chief AI** som väger ihop aktiva agenters bedömningar
-- Chief AI-signal, confidence, risknivå och föreslagen portföljandel
-- Market Scanner och Auto Paper använder nu Chief AI:s beslut
-- AI-motivering sparas i handelsjournalen
+- Beginner-focused market overview and plain-language explanations
+- Technical analysis using EMA, RSI, MACD, and ATR
+- Explainable multi-agent analysis with a transparent Chief AI decision
+- Ranked market scanner
+- Paper-trading account, positions, journal, and performance statistics
+- Configurable automated paper-trading cycles
+- Strategy registry and deterministic strategy evaluation
+- Emergency controls and locked live trading
 
-## Viktig transparens
+Project Odin currently supports paper trading only. News and macro agents remain
+visibly offline until verified data sources are connected. Live trading remains
+locked.
 
-v0.7 använder en **lokal, regelbaserad och förklarbar multi-agentmotor**. Den låtsas inte vara en tränad språkmodell.
+## Architecture
 
-News Analyst och Macro Analyst visas i gränssnittet men står tydligt som **EJ ANSLUTEN**. De påverkar inte beslutet förrän verifierade nyhets- och makrodatakällor har lagts till.
+- React, TypeScript, and Vite frontend
+- FastAPI backend
+- PostgreSQL persistence with SQLAlchemy and Alembic
+- Docker Compose development environment
 
-## Installation
+The frontend uses a shared typed API layer with timeout, network, and invalid-response
+handling. Backend unit tests use isolated FastAPI applications and dependency
+overrides, so they do not require PostgreSQL, Docker, or external network access.
 
-Stoppa den gamla versionen och kopiera innehållet över din befintliga projektmapp.
+## Run with Docker
+
+Create `.env` from `.env.example`, then run:
 
 ```powershell
-docker compose down
 docker compose up --build
 ```
 
-Öppna:
+Open `http://localhost:5173`.
 
-```text
-http://localhost:5173
+## Development verification
+
+Frontend:
+
+```powershell
+cd frontend
+npm install
+npm run format:check
+npm run lint
+npm run build
 ```
 
-## Testa
+Backend:
 
-1. Öppna **AI Center**.
-2. Välj marknad och tidsram.
-3. Kontrollera Chief AI och varje agents underlag.
-4. Aktivera Paper Trading.
-5. Starta Auto Paper i Market Scanner.
+```powershell
+cd backend
+python -m pip install -e ".[dev]"
+python -m ruff format --check app tests
+python -m ruff check app tests
+python -m pytest -q
+```
 
-Endast paper trading stöds. Livehandel är fortfarande låst.
+## Release history
 
-## v0.8.0 – Strategy Engine, Sprint 1
+- v0.8.3: isolated and stabilized the automated test suite
+- v0.8.2: maintainability, shared UI, API robustness, and styling consistency
+- v0.8.1: beginner-focused experience and simplified navigation
+- v0.8.0: strategy registry and deterministic strategy evaluation
+- v0.7.0: explainable multi-agent analysis engine
 
-Nyheter:
-
-- Strategy Lab i gränssnittet.
-- Strategier lagras i PostgreSQL.
-- En aktiv strategi åt gången.
-- Kopiering och versionsökning vid varje sparning.
-- Konfigurerbara RSI-, MACD- och poängregler.
-- Separat riskprofil per strategi.
-- Direkt utvärdering mot vald marknad och tidsram.
-- Deterministiska tester för strategimotorn.
-
-Backtesting är fortfarande låst och planeras till nästa sprint.
-
-## v0.8.1 – Enkel användarupplevelse
-
-- Ny nybörjarvänlig startsida med marknadsläge, bästa möjlighet och testkonto.
-- Förenklad meny: Hem, Marknaden, Mitt testkonto, Odins råd, Resultat och Inställningar.
-- Expertverktyg döljs som standard och kan aktiveras i Inställningar.
-- Paper Trading heter nu Testkonto i det enkla gränssnittet.
-- Tydligare autopilotstatus och vanliga svenska förklaringar.
-- Automatisk riktig handel är fortsatt låst.
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.

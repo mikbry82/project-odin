@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "project-odin-backend"
-version = "0.8.2"
+version = "0.8.3"
 description = "Backend for Project Odin, an automated AI-assisted trading platform."
 requires-python = ">=3.13"
 dependencies = [
