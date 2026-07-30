@@ -1,9 +1,10 @@
 Metadata-Version: 2.4
 Name: project-odin-backend
-Version: 0.8.3
+Version: 0.9.0
 Summary: Backend for Project Odin, an automated AI-assisted trading platform.
 Requires-Python: >=3.13
 Requires-Dist: alembic<2,>=1.14
+Requires-Dist: aiosqlite<1,>=0.21
 Requires-Dist: asyncpg<1,>=0.30
 Requires-Dist: fastapi<1,>=0.115
 Requires-Dist: httpx<1,>=0.28
@@ -13,4 +14,5 @@ Requires-Dist: uvicorn[standard]<1,>=0.34
 Provides-Extra: dev
 Requires-Dist: pytest<9,>=8.3; extra == "dev"
 Requires-Dist: pytest-asyncio<1,>=0.25; extra == "dev"
+Requires-Dist: pyinstaller<7,>=6.11; extra == "dev"
 Requires-Dist: ruff<1,>=0.9; extra == "dev"

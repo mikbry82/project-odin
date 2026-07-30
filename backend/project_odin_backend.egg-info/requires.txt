@@ -1,4 +1,5 @@
 alembic<2,>=1.14
+aiosqlite<1,>=0.21
 asyncpg<1,>=0.30
 fastapi<1,>=0.115
 httpx<1,>=0.28
@@ -9,4 +10,5 @@ uvicorn[standard]<1,>=0.34
 [dev]
 pytest<9,>=8.3
 pytest-asyncio<1,>=0.25
+pyinstaller<7,>=6.11
 ruff<1,>=0.9

@@ -10,6 +10,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 build/
+backend/dist/
+backend/*.spec
 .coverage
 htmlcov/
 
@@ -29,5 +31,11 @@ postgres_data/
 # Frontend
 node_modules/
 dist/
+release/
 .next/
 *.tsbuildinfo
+
+# Desktop runtime data and packaging
+*.db
+*.db-shm
+*.db-wal

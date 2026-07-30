@@ -2,6 +2,78 @@
 
 All notable changes to Project Odin are documented in this file.
 
+## [0.9.0] - 2026-07-30
+
+Windows desktop release candidate focused on packaging, startup reliability,
+configuration, and security. Trading logic, recommendations, strategy calculations,
+API payloads, and the database schema are unchanged.
+
+### Added
+
+- Secure Electron shell for the existing React and FastAPI application.
+- Automatic localhost backend startup, readiness polling, single-instance handling,
+  port-conflict detection, and graceful shutdown.
+- Swedish desktop startup, timeout, configuration, port-conflict, and unexpected-exit
+  messages.
+- PyInstaller backend executable using desktop-only local SQLite configuration.
+- Electron development, unpacked build, NSIS installer, and portable build scripts.
+- Windows installer and portable executable packaging metadata.
+
+### Changed
+
+- Registered the existing `/health` router used by Docker and desktop readiness checks.
+- Added validated desktop host, port, and CORS configuration with hidden validation
+  inputs.
+- Restricted Docker and desktop backend startup to explicit host configurations;
+  desktop mode binds to `127.0.0.1`.
+- Updated all package and application metadata to v0.9.0.
+
+### Security
+
+- Enabled `contextIsolation`, renderer sandboxing, and `webSecurity`.
+- Disabled Node integration and exposed no renderer IPC surface.
+- Denied permission requests, new windows, webviews, and navigation outside the
+  packaged origin or local Vite development origin.
+- Added restrictive Content Security Policies for startup and application pages.
+- Kept secrets out of renderer configuration and sanitized startup errors.
+
+### Files affected
+
+- `.env.example`
+- `.gitignore`
+- `backend/app/core/config.py`
+- `backend/app/desktop.py`
+- `backend/app/main.py`
+- `backend/pyproject.toml`
+- `backend/project_odin_backend.egg-info/PKG-INFO`
+- `frontend/electron/`
+- `frontend/index.html`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `frontend/vite.config.ts`
+- `scripts/build_desktop_backend.py`
+- `README.md`
+- `CHANGELOG.md`
+
+### Verification
+
+- Frontend Prettier check, TypeScript lint, and Vite production build pass.
+- Electron scripts pass syntax checks and the unpacked Electron build succeeds.
+- Packaged backend health and graceful-shutdown smoke test passes.
+- Packaged Electron lifecycle smoke test passes.
+- Backend Ruff formatting, Ruff lint, compilation, and all 15 tests pass.
+- Backend v0.9.0 wheel build passes.
+- Docker Compose parsing and `git diff --check` pass.
+- Created `Project-Odin-Setup-0.9.0-x64.exe`.
+- Created `Project-Odin-Portable-0.9.0-x64.exe`.
+
+### Known limitations
+
+- Windows artifacts are not publisher-signed and use Electron's default icon.
+- Localhost API requests are not authenticated.
+- Desktop SQLite data is not encrypted at rest.
+- Automatic updates and crash reporting are not included.
+
 ## [0.8.3] - 2026-07-30
 
 Test-stability release with no changes to production endpoints, database behavior,

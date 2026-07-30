@@ -1,5 +1,6 @@
 pyproject.toml
 app/__init__.py
+app/desktop.py
 app/main.py
 app/api/__init__.py
 app/api/router.py

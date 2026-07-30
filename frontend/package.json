@@ -1,26 +1,73 @@
 {
-  "name": "project-odin-frontend",
+  "name": "project-odin-desktop",
+  "productName": "Project Odin",
+  "description": "Desktop release candidate for Project Odin.",
+  "author": "Project Odin contributors",
   "private": true,
-  "version": "0.8.3",
+  "version": "0.9.0",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "python -m uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 8000 --reload",
+    "dev:desktop": "node electron/dev-desktop.mjs",
     "build": "tsc -b && vite build",
+    "build:backend": "python ../scripts/build_desktop_backend.py",
+    "build:desktop": "npm run build:backend && npm run build && electron-builder --dir",
+    "package:desktop": "npm run build:backend && npm run build && electron-builder --win nsis portable",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "tsc -b",
     "preview": "vite preview"
   },
-  "dependencies": {
+  "devDependencies": {
     "@vitejs/plugin-react": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.11.1",
+    "prettier": "^3.9.6",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
     "vite": "latest"
   },
-  "devDependencies": {
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "prettier": "^3.9.6"
+  "build": {
+    "appId": "se.projectodin.desktop",
+    "productName": "Project Odin",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "frontend"
+      },
+      {
+        "from": "../backend/dist/project-odin-backend.exe",
+        "to": "backend/project-odin-backend.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "artifactName": "Project-Odin-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "Project-Odin-Portable-${version}-${arch}.${ext}"
+    }
   }
 }

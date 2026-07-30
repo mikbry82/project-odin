@@ -325,7 +325,7 @@ export default function App() {
                             ? "Strategy Lab"
                             : "Inställningar"}
             </h1>
-            <p>Project Odin v0.8.3 · Enkelt läge är standard</p>
+            <p>Project Odin v0.9.0 · Enkelt läge är standard</p>
           </div>
           <Badge className={`mode-badge ${status?.trading_mode ?? "off"}`}>
             {status?.trading_mode === "paper"
