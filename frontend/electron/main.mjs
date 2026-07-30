@@ -9,7 +9,7 @@ const BACKEND_HOST = "127.0.0.1";
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const STARTUP_TIMEOUT_MS = 30_000;
-const isDevelopment = process.env.ODIN_ELECTRON_DEV === "1";
+const isDevelopment = !app.isPackaged && process.env.ODIN_ELECTRON_DEV === "1";
 const electronDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 let backendProcess = null;

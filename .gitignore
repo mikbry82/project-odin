@@ -6,6 +6,8 @@ venv/
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+*.whl
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -16,6 +18,7 @@ backend/*.spec
 htmlcov/
 
 # IDE
+.tools/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -31,7 +34,7 @@ postgres_data/
 # Frontend
 node_modules/
 dist/
-release/
+release*/
 .next/
 *.tsbuildinfo
 

@@ -1,37 +1,33 @@
-# Project Odin v0.9.0
+# Project Odin v1.0.0
 
 Project Odin is an explainable market-analysis and paper-trading application. The
-v0.9.0 desktop release candidate packages the existing React frontend and FastAPI
-backend into a Windows application without changing trading logic, recommendations,
-strategies, API payloads, or the database schema.
+Windows desktop application packages the React frontend and FastAPI backend and runs
+entirely on the local computer. Live trading remains locked, and news and macro
+agents remain offline until verified data sources are available.
 
-Live trading remains locked. News and macro agents remain visibly offline until
-verified data sources are available.
+## Install and start on Windows
 
-## Desktop release candidate
+Download `Project-Odin-Setup-1.0.0-x64.exe`, run it, choose an installation
+directory, and launch Project Odin from the Start menu or desktop shortcut. Windows
+SmartScreen may warn because the application is not publisher-signed; only run an
+artifact obtained from a trusted source.
 
-The Windows application:
+For use without installation, download
+`Project-Odin-Portable-1.0.0-x64.exe` and run it directly.
 
-- opens in its own Electron window;
-- starts a localhost-only packaged backend automatically;
-- waits for backend and database health before showing the interface;
-- stores desktop data locally in the Electron user-data directory;
-- avoids duplicate desktop and backend processes;
-- requests graceful backend shutdown when the window closes.
+On first start, Project Odin starts its localhost backend, creates the local SQLite
+database, waits for both backend and database readiness, and then displays the
+interface. This can take a little longer than later starts. No terminal window is
+required.
 
-Generated Windows artifacts:
-
-- `frontend/release/Project-Odin-Setup-0.9.0-x64.exe`
-- `frontend/release/Project-Odin-Portable-0.9.0-x64.exe`
-
-The installer supports a user-selected installation directory. The portable build can
-run without installation.
+Desktop data is stored in Electron's per-user application-data directory under
+`Project Odin`. Uninstalling the application does not necessarily delete this data.
 
 ## Desktop development
 
 Requirements:
 
-- Node.js 22 or newer
+- Node.js 22.12 or newer
 - Python 3.13 or newer
 
 Install dependencies:
@@ -41,145 +37,91 @@ cd backend
 python -m pip install -e ".[dev]"
 
 cd ..\frontend
-npm install
+npm ci
 ```
 
-Run Electron with the Vite development server and an automatically managed local
-backend:
+Run Electron with Vite and the automatically managed local backend:
 
 ```powershell
 cd frontend
 npm run dev:desktop
 ```
 
-Normal browser development remains available:
+Browser development remains available by running `npm run dev` and
+`npm run dev:backend` in separate terminals from `frontend`, then opening
+`http://127.0.0.1:5173`.
 
-```powershell
-cd frontend
-npm run dev
-```
-
-In another terminal:
-
-```powershell
-cd frontend
-npm run dev:backend
-```
-
-Then open `http://127.0.0.1:5173`.
-
-## Windows builds
-
-Build the frontend, packaged backend, and unpacked Electron application:
+Build the unpacked desktop application or both Windows release artifacts:
 
 ```powershell
 cd frontend
 npm run build:desktop
-```
-
-Create the NSIS installer and portable executable:
-
-```powershell
-cd frontend
 npm run package:desktop
 ```
 
-The packaged backend can be built separately with:
-
-```powershell
-cd frontend
-npm run build:backend
-```
+Artifacts are written to `frontend/release-v1.0.0/`.
 
 ## Docker
 
-Copy `.env.example` to `.env`, replace the PostgreSQL password placeholders, and run:
+Copy `.env.example` to `.env`, replace the PostgreSQL password placeholders, then
+run:
 
 ```powershell
 docker compose up --build
 ```
 
-Open `http://localhost:5173`. Docker continues to use PostgreSQL and the existing
-browser-based development workflow.
-
-## Configuration
-
-Desktop mode supplies safe runtime values automatically:
-
-- backend host: `127.0.0.1`
-- backend port: `8000`
-- database: local SQLite file in Electron's user-data directory
-- allowed renderer origin: `app://odin`
-
-Docker uses `DATABASE_URL` from `.env`. Never commit `.env`, database files, exchange
-credentials, or other secrets. Configuration validation does not include secret input
-values in errors.
+Open `http://localhost:5173`. Docker uses PostgreSQL and the browser-based
+development workflow. Stop it with `docker compose down`.
 
 ## Troubleshooting
 
 ### Port 8000 is already in use
 
-Project Odin reuses an already-healthy Odin backend but will not take over an unrelated
-process. Close the process using port 8000 and restart the application:
+Project Odin reuses an already-healthy Odin backend but will not take over another
+process. Close the process using port 8000 and restart:
 
 ```powershell
 Get-NetTCPConnection -LocalPort 8000
 ```
 
-### Odin cannot start within 30 seconds
+### Startup does not finish within 30 seconds
 
-Restart the application. If the issue remains, confirm that security software has not
-blocked the packaged backend and that the user-data directory is writable.
+Restart the application. If the issue remains, check that security software has not
+blocked the packaged backend and that the application-data directory is writable.
 
-### Windows displays a SmartScreen warning
+### The local service exits
 
-The v0.9.0 release-candidate artifacts are not signed with a trusted publisher
-certificate. Only run artifacts built from a trusted checkout.
+Restart Project Odin. A local diagnostic log named `odin-backend.log` is stored in
+the application-data directory. Review it before reporting a problem, but do not
+share secrets or private data.
 
 ### Docker health check fails
 
-Confirm PostgreSQL is healthy and that `DATABASE_URL` uses the same database name,
+Confirm PostgreSQL is healthy and that `DATABASE_URL` matches the database name,
 user, and password configured for the `db` service.
 
-## Security posture and known limitations
+## Security and known limitations
 
-- Electron uses `contextIsolation`, renderer sandboxing, disabled Node integration,
-  denied permission requests, blocked new windows, and restricted navigation.
-- The renderer receives no IPC or shell-access API.
-- Production UI assets load only from the packaged `app://odin` origin.
-- The backend binds only to localhost in desktop mode.
+- Electron isolates and sandboxes the renderer, disables Node integration, denies
+  permission requests, blocks new windows and webviews, and restricts navigation.
+- Production UI assets load from the packaged `app://odin` origin.
+- The desktop backend binds only to `127.0.0.1`.
 - The localhost API has no authentication; another process running as the same user
   could attempt local requests.
 - The local SQLite database is not encrypted at rest.
-- Windows artifacts use Electron's default placeholder icon and are not
-  publisher-signed.
-- Automatic updates and crash reporting are not included.
+- Windows artifacts use Electron's default icon and are not publisher-signed.
+- Automatic updates, telemetry, cloud services, and crash reporting are not
+  included.
+- Project Odin performs analysis and simulated paper trading only. Market data may
+  be delayed, incomplete, or unavailable.
 
-These packaging, signing, local-authentication, and data-at-rest items should be
-reviewed before v1.0.
+Project Odin is not financial advice. All financial decisions and their consequences
+remain the user's responsibility.
 
 ## Verification
 
-Frontend and desktop:
-
-```powershell
-cd frontend
-npm run format:check
-npm run lint
-npm run build
-npm run build:desktop
-npm run package:desktop
-```
-
-Backend:
-
-```powershell
-cd backend
-python -m ruff format --check app tests ..\scripts\build_desktop_backend.py
-python -m ruff check app tests ..\scripts\build_desktop_backend.py
-python -m compileall -q app tests
-python -m pytest -q
-python -m pip wheel . --no-deps --no-build-isolation
-```
-
-See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+Release verification covers formatting, linting, production builds, Electron syntax,
+backend compilation and tests, wheel creation, Docker Compose parsing, desktop
+packaging, and installer/portable lifecycle smoke tests. Exact v1.0.0 results and
+artifact checksums are recorded in [CHANGELOG.md](CHANGELOG.md) and
+[RELEASE_NOTES_1.0.0.md](RELEASE_NOTES_1.0.0.md).

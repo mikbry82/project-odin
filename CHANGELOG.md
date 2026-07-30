@@ -2,6 +2,46 @@
 
 All notable changes to Project Odin are documented in this file.
 
+## [1.0.0] - 2026-07-30
+
+First stable production release. This release is limited to release hardening,
+version consistency, artifact hygiene, verification, and documentation. Trading
+logic, recommendations, strategy calculations, API contracts, and the database
+schema are unchanged.
+
+### Changed
+
+- Updated application, package, backend, visible UI, installer, and portable
+  artifact versions to 1.0.0.
+- Prevented the Electron development mode exception from being enabled in a
+  packaged build.
+- Removed tracked generated Python package metadata and ignored future
+  `*.egg-info` output.
+- Updated installation, first-start, development, Docker, troubleshooting, storage,
+  security, limitations, and financial-responsibility documentation.
+
+### Verification
+
+- Frontend formatting, lint, build, Electron syntax, unpacked desktop build, and
+  Windows packaging pass.
+- Backend formatting, lint, compilation, all 15 tests, wheel build, and packaged
+  startup/shutdown/failure-path checks pass.
+- Docker Compose validation was unavailable because Docker is not installed.
+- Installer installation and 1.0.0 metadata checks pass; automated installer and
+  portable UI lifecycle testing remains gated by the non-interactive test
+  environment and must be completed manually before release.
+- Full results and checksums are recorded in `RELEASE_NOTES_1.0.0.md`.
+- Windows artifacts:
+  `Project-Odin-Setup-1.0.0-x64.exe` and
+  `Project-Odin-Portable-1.0.0-x64.exe`.
+
+### Known limitations
+
+- Windows artifacts are not publisher-signed and use Electron's default icon.
+- Localhost API requests are not authenticated.
+- Desktop SQLite data is not encrypted at rest.
+- Automatic updates and crash reporting are not included.
+
 ## [0.9.0] - 2026-07-30
 
 Windows desktop release candidate focused on packaging, startup reliability,
